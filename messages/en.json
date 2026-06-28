@@ -1,0 +1,86 @@
+{
+  "common": {
+    "loading": "Loading...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "delete": "Delete",
+    "edit": "Edit",
+    "submit": "Submit",
+    "signOut": "Sign Out",
+    "adminLogin": "Staff Login",
+    "back": "Back",
+    "actions": "Actions",
+    "status": "Status",
+    "active": "Active",
+    "inactive": "Inactive"
+  },
+  "navigation": {
+    "dashboard": "Dashboard",
+    "appointments": "Appointments",
+    "barbers": "Barbers",
+    "myAppointments": "My Appointments"
+  },
+  "booking": {
+    "title": "Book Your Appointment",
+    "subtitle": "Select your barber, date, and time — no account needed",
+    "yourName": "Your Name",
+    "yourNamePlaceholder": "Enter your full name",
+    "selectBarber": "Choose Your Barber",
+    "selectDate": "Select Date",
+    "selectTime": "Select Time",
+    "submit": "Book Appointment",
+    "success": "Appointment booked successfully!",
+    "noBarbers": "No barbers available at the moment",
+    "slotTaken": "This time slot is already booked",
+    "requiredFields": "Please fill in all fields"
+  },
+  "login": {
+    "title": "Staff Login",
+    "subtitle": "Admin and barber access",
+    "email": "Email",
+    "password": "Password",
+    "signIn": "Sign In",
+    "invalidCredentials": "Invalid email or password",
+    "backToBooking": "Back to booking"
+  },
+  "dashboard": {
+    "title": "Dashboard",
+    "description": "Salon overview",
+    "totalAppointments": "Total Appointments",
+    "todayAppointments": "Today's Appointments",
+    "activeBarbers": "Active Barbers",
+    "upcoming": "Upcoming Appointments"
+  },
+  "appointments": {
+    "title": "Appointments",
+    "description": "Manage all salon appointments",
+    "customer": "Customer",
+    "barber": "Barber",
+    "date": "Date",
+    "time": "Time",
+    "noAppointments": "No appointments found",
+    "scheduled": "Scheduled",
+    "completed": "Completed",
+    "cancelled": "Cancelled",
+    "markCompleted": "Mark Completed",
+    "markCancelled": "Cancel"
+  },
+  "myAppointments": {
+    "title": "My Appointments",
+    "description": "Your scheduled clients",
+    "noAppointments": "You have no appointments yet"
+  },
+  "barbers": {
+    "title": "Barbers",
+    "description": "Manage barber accounts",
+    "addBarber": "Add Barber",
+    "name": "Name",
+    "email": "Email",
+    "password": "Password",
+    "create": "Create Barber",
+    "created": "Barber created successfully",
+    "noBarbers": "No barbers yet",
+    "newTitle": "New Barber",
+    "newDescription": "Create a barber account for appointment booking"
+  }
+}

@@ -1,0 +1,86 @@
+{
+  "common": {
+    "loading": "جاري التحميل...",
+    "save": "حفظ",
+    "cancel": "إلغاء",
+    "delete": "حذف",
+    "edit": "تعديل",
+    "submit": "إرسال",
+    "signOut": "تسجيل الخروج",
+    "adminLogin": "دخول الموظفين",
+    "back": "رجوع",
+    "actions": "إجراءات",
+    "status": "الحالة",
+    "active": "نشط",
+    "inactive": "غير نشط"
+  },
+  "navigation": {
+    "dashboard": "لوحة التحكم",
+    "appointments": "المواعيد",
+    "barbers": "الحلاقون",
+    "myAppointments": "مواعيدي"
+  },
+  "booking": {
+    "title": "احجز موعدك",
+    "subtitle": "اختر الحلاق والتاريخ والوقت ",
+    "yourName": "اسمك",
+    "yourNamePlaceholder": "أدخل اسمك الكامل",
+    "selectBarber": "اختر الحلاق",
+    "selectDate": "اختر التاريخ",
+    "selectTime": "اختر الوقت",
+    "submit": "احجز الموعد",
+    "success": "تم حجز الموعد بنجاح!",
+    "noBarbers": "لا يوجد حلاقون متاحون حالياً",
+    "slotTaken": "هذا الوقت محجوز بالفعل",
+    "requiredFields": "يرجى ملء جميع الحقول"
+  },
+  "login": {
+    "title": "دخول الموظفين",
+    "subtitle": "دخول المدير والحلاق",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "signIn": "تسجيل الدخول",
+    "invalidCredentials": "بريد أو كلمة مرور غير صحيحة",
+    "backToBooking": "العودة للحجز"
+  },
+  "dashboard": {
+    "title": "لوحة التحكم",
+    "description": "نظرة عامة على الصالون",
+    "totalAppointments": "إجمالي المواعيد",
+    "todayAppointments": "مواعيد اليوم",
+    "activeBarbers": "الحلاقون النشطون",
+    "upcoming": "المواعيد القادمة"
+  },
+  "appointments": {
+    "title": "المواعيد",
+    "description": "إدارة جميع مواعيد الصالون",
+    "customer": "العميل",
+    "barber": "الحلاق",
+    "date": "التاريخ",
+    "time": "الوقت",
+    "noAppointments": "لا توجد مواعيد",
+    "scheduled": "مجدول",
+    "completed": "مكتمل",
+    "cancelled": "ملغى",
+    "markCompleted": "تحديد كمكتمل",
+    "markCancelled": "إلغاء"
+  },
+  "myAppointments": {
+    "title": "مواعيدي",
+    "description": "عملاؤك المجدولون",
+    "noAppointments": "ليس لديك مواعيد بعد"
+  },
+  "barbers": {
+    "title": "الحلاقون",
+    "description": "إدارة حسابات الحلاقين",
+    "addBarber": "إضافة حلاق",
+    "name": "الاسم",
+    "email": "البريد الإلكتروني",
+    "password": "كلمة المرور",
+    "create": "إنشاء حلاق",
+    "created": "تم إنشاء الحلاق بنجاح",
+    "noBarbers": "لا يوجد حلاقون بعد",
+    "newTitle": "حلاق جديد",
+    "newDescription": "إنشاء حساب حلاق للحجز"
+  }
+}
