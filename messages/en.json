@@ -31,6 +31,8 @@
     "submit": "Book Appointment",
     "success": "Appointment booked successfully!",
     "noBarbers": "No barbers available at the moment",
+    "loadError": "Unable to load barbers. Please check your connection and try again.",
+    "retry": "Try Again",
     "slotTaken": "This time slot is already booked",
     "requiredFields": "Please fill in all fields"
   },

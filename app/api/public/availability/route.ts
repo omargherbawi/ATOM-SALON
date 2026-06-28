@@ -2,6 +2,8 @@ import { NextRequest, NextResponse } from 'next/server';
 import dbConnect from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
 
+export const runtime = 'nodejs';
+
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -21,7 +23,9 @@ export async function GET(request: NextRequest) {
       barberId,
       date,
       status: 'scheduled',
-    }).select('time');
+    })
+      .select('time -_id')
+      .lean();
 
     return NextResponse.json(booked.map((a) => a.time));
   } catch (error) {

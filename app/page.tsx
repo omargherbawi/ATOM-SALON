@@ -27,7 +27,8 @@ export default function BookingPage() {
   const { t } = useTranslations();
   const { settings } = useSettings();
   const [barbers, setBarbers] = useState<Barber[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [barbersLoading, setBarbersLoading] = useState(true);
+  const [barbersError, setBarbersError] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [bookedTimes, setBookedTimes] = useState<string[]>([]);
   const [form, setForm] = useState({
@@ -37,13 +38,36 @@ export default function BookingPage() {
     time: '',
   });
 
-  useEffect(() => {
-    fetch('/api/public/barbers')
-      .then((res) => res.json())
+  const loadBarbers = () => {
+    setBarbersLoading(true);
+    setBarbersError(false);
+
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 15000);
+
+    fetch('/api/public/barbers', { signal: controller.signal })
+      .then((res) => {
+        if (!res.ok) throw new Error('Failed to load barbers');
+        return res.json();
+      })
       .then((data) => {
         if (Array.isArray(data)) setBarbers(data);
+        else setBarbersError(true);
       })
-      .finally(() => setLoading(false));
+      .catch(() => setBarbersError(true))
+      .finally(() => {
+        clearTimeout(timeout);
+        setBarbersLoading(false);
+      });
+
+    return () => {
+      clearTimeout(timeout);
+      controller.abort();
+    };
+  };
+
+  useEffect(() => {
+    return loadBarbers();
   }, []);
 
   useEffect(() => {
@@ -103,14 +127,6 @@ export default function BookingPage() {
     }
   };
 
-  if (loading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-black">
-        <Loader2 className="h-12 w-12 animate-spin text-amber-400" />
-      </div>
-    );
-  }
-
   return (
     <div className="min-h-screen bg-gradient-to-b from-black via-zinc-950 to-black">
       {/* Header */}
@@ -150,7 +166,23 @@ export default function BookingPage() {
           </p>
         </div>
 
-        {barbers.length === 0 ? (
+        {barbersLoading ? (
+          <div className="rounded-2xl border border-amber-500/25 bg-zinc-900/60 p-8 flex flex-col items-center gap-3">
+            <Loader2 className="h-8 w-8 animate-spin text-amber-400" />
+            <p className="text-sm text-zinc-400">{t('common.loading')}</p>
+          </div>
+        ) : barbersError ? (
+          <div className="rounded-xl border border-red-500/30 bg-zinc-900/50 p-8 text-center space-y-4">
+            <p className="text-zinc-300">{t('booking.loadError')}</p>
+            <button
+              type="button"
+              onClick={loadBarbers}
+              className="rounded-lg border border-amber-500/40 px-4 py-2 text-sm text-amber-300 hover:bg-amber-500/10 transition-colors"
+            >
+              {t('booking.retry')}
+            </button>
+          </div>
+        ) : barbers.length === 0 ? (
           <div className="rounded-xl border border-amber-500/20 bg-zinc-900/50 p-8 text-center text-zinc-400">
             {t('booking.noBarbers')}
           </div>
