@@ -5,6 +5,7 @@ import { Calendar, Scissors, Users } from 'lucide-react';
 import ProtectedRoute from '../protected-route';
 import SidebarLayout from '../components/sidebar-layout';
 import { useTranslations } from '../hooks/useTranslations';
+import { isActiveBooking } from '@/lib/working-hours';
 
 interface Stats {
   totalAppointments: number;
@@ -44,14 +45,14 @@ export default function DashboardPage() {
         totalAppointments: appts.length,
         todayAppointments: appts.filter(
           (a: { date: string; status: string }) =>
-            a.date === today && a.status === 'scheduled'
+            a.date === today && isActiveBooking(a.status)
         ).length,
         activeBarbers: barberList.filter((b: { active: boolean }) => b.active)
           .length,
         upcoming: appts
           .filter(
             (a: { status: string; date: string }) =>
-              a.status === 'scheduled' && a.date >= today
+              isActiveBooking(a.status) && a.date >= today
           )
           .slice(0, 5),
       });

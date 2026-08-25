@@ -1,5 +1,12 @@
 import mongoose from 'mongoose';
 
+export interface IWorkingHours {
+  day: number;
+  enabled: boolean;
+  start: string;
+  end: string;
+}
+
 export interface IUser {
   _id: string;
   name: string;
@@ -9,9 +16,20 @@ export interface IUser {
   department?: string;
   staffTypeId?: string;
   active: boolean;
+  workingHours: IWorkingHours[];
   createdAt: Date;
   updatedAt: Date;
 }
+
+const workingHoursSchema = new mongoose.Schema(
+  {
+    day: { type: Number, required: true, min: 0, max: 6 },
+    enabled: { type: Boolean, default: false },
+    start: { type: String, default: '09:00' },
+    end: { type: String, default: '18:00' },
+  },
+  { _id: false }
+);
 
 const userSchema = new mongoose.Schema<IUser>(
   {
@@ -32,6 +50,7 @@ const userSchema = new mongoose.Schema<IUser>(
     department: { type: String, trim: true },
     staffTypeId: { type: String },
     active: { type: Boolean, default: true },
+    workingHours: { type: [workingHoursSchema], default: [] },
   },
   { timestamps: true }
 );

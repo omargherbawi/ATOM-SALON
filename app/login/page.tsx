@@ -110,6 +110,7 @@ function LoginForm() {
         <p className="text-center mt-6">
           <Link
             href="/"
+            prefetch={false}
             className="text-sm text-amber-400/70 hover:text-amber-300"
           >
             ← {t('login.backToBooking')}

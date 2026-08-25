@@ -4,6 +4,10 @@ import bcrypt from 'bcryptjs';
 import { authOptions } from '../auth/[...nextauth]/route';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
+import {
+  defaultWorkingHours,
+  normalizeWorkingHours,
+} from '@/lib/working-hours';
 
 export const runtime = 'nodejs';
 
@@ -49,7 +53,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, email, password } = body;
+    const { name, email, password, workingHours } = body;
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
@@ -72,6 +76,7 @@ export async function POST(request: NextRequest) {
     }
 
     const hashedPassword = await bcrypt.hash(password, 12);
+    const hours = normalizeWorkingHours(workingHours) ?? defaultWorkingHours();
 
     const barber = await User.create({
       name: name.trim(),
@@ -80,6 +85,7 @@ export async function POST(request: NextRequest) {
       role: 'barber',
       department: session.user.department,
       active: true,
+      workingHours: hours,
     });
 
     const result = barber.toObject();

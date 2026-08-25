@@ -4,6 +4,8 @@ import bcrypt from 'bcryptjs';
 import { authOptions } from '../../auth/[...nextauth]/route';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
+import Appointment from '@/models/Appointment';
+import { normalizeWorkingHours } from '@/lib/working-hours';
 
 export const runtime = 'nodejs';
 
@@ -63,10 +65,33 @@ export async function PUT(
     }
 
     if (body.name) barber.name = body.name.trim();
-    if (body.email) barber.email = body.email.toLowerCase().trim();
+    if (body.email) {
+      const email = body.email.toLowerCase().trim();
+      const taken = await User.findOne({
+        email,
+        _id: { $ne: id },
+      });
+      if (taken) {
+        return NextResponse.json(
+          { error: 'Email already in use' },
+          { status: 400 }
+        );
+      }
+      barber.email = email;
+    }
     if (typeof body.active === 'boolean') barber.active = body.active;
     if (body.password && body.password.length >= 6) {
       barber.password = await bcrypt.hash(body.password, 12);
+    }
+    if (body.workingHours !== undefined) {
+      const hours = normalizeWorkingHours(body.workingHours);
+      if (!hours) {
+        return NextResponse.json(
+          { error: 'Invalid working hours' },
+          { status: 400 }
+        );
+      }
+      barber.workingHours = hours;
     }
 
     await barber.save();
@@ -101,17 +126,19 @@ export async function DELETE(
     const { id } = await params;
     await dbConnect();
 
-    const barber = await User.findOneAndUpdate(
-      { _id: id, role: 'barber' },
-      { active: false },
-      { new: true }
-    ).select('-password');
-
+    const barber = await User.findOne({ _id: id, role: 'barber' });
     if (!barber) {
       return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
     }
 
-    return NextResponse.json({ message: 'Barber deactivated successfully' });
+    await Appointment.updateMany(
+      { barberId: id, status: { $in: ['scheduled', 'scheduled'] } },
+      { status: 'cancelled' }
+    );
+
+    await User.deleteOne({ _id: id });
+
+    return NextResponse.json({ message: 'Barber deleted successfully' });
   } catch (error) {
     console.error('DELETE /api/barbers/[id] error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });

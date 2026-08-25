@@ -5,6 +5,7 @@ import toast from 'react-hot-toast';
 import ProtectedRoute from '../protected-route';
 import SidebarLayout from '../components/sidebar-layout';
 import { useTranslations } from '../hooks/useTranslations';
+import { isActiveBooking } from '@/lib/working-hours';
 
 interface Appointment {
   _id: string;
@@ -93,14 +94,28 @@ export default function MyAppointmentsPage() {
                 </div>
                 <div className="flex items-center gap-3">
                   {statusBadge(appt.status)}
-                  {appt.status === 'scheduled' && (
+                  {isActiveBooking(appt.status) && (
+                    <div className="flex flex-wrap gap-2">
                     <button
                       type="button"
                       onClick={() => updateStatus(appt._id, 'completed')}
-                      className="text-xs rounded-lg bg-green-500/20 text-green-400 px-3 py-1.5 hover:bg-green-500/30"
+                      className="min-h-11 text-xs rounded-lg bg-green-500/20 text-green-400 px-3 py-1.5 hover:bg-green-500/30"
                     >
                       {t('appointments.markCompleted')}
                     </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        if (!window.confirm(t('myAppointments.confirmCancel'))) {
+                          return;
+                        }
+                        updateStatus(appt._id, 'cancelled');
+                      }}
+                      className="min-h-11 text-xs rounded-lg bg-red-500/20 text-red-400 px-3 py-1.5 hover:bg-red-500/30"
+                    >
+                      {t('appointments.markCancelled')}
+                    </button>
+                    </div>
                   )}
                 </div>
               </div>

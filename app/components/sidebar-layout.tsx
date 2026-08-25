@@ -138,7 +138,9 @@ export default function SidebarLayout({
             </nav>
             <button
               type="button"
-              onClick={() => signOut({ callbackUrl: '/login' })}
+              onClick={() =>
+                signOut({ callbackUrl: `${window.location.origin}/login` })
+              }
               className="flex items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-red-400 hover:bg-zinc-800 mt-4"
             >
               <LogOut className="h-5 w-5" />
@@ -163,7 +165,9 @@ export default function SidebarLayout({
             <LanguageSwitcher />
             <button
               type="button"
-              onClick={() => signOut({ callbackUrl: '/login' })}
+              onClick={() =>
+                signOut({ callbackUrl: `${window.location.origin}/login` })
+              }
               className="flex w-full items-center gap-3 rounded-lg px-3 py-2.5 text-sm text-red-400 hover:bg-zinc-800"
             >
               <LogOut className="h-5 w-5" />

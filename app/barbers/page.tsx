@@ -2,7 +2,8 @@
 
 import { useEffect, useState } from 'react';
 import Link from 'next/link';
-import { Plus } from 'lucide-react';
+import { Pencil, Plus, Trash2 } from 'lucide-react';
+import toast from 'react-hot-toast';
 import ProtectedRoute from '../protected-route';
 import SidebarLayout from '../components/sidebar-layout';
 import { useTranslations } from '../hooks/useTranslations';
@@ -18,15 +19,42 @@ export default function BarbersPage() {
   const { t } = useTranslations();
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [loading, setLoading] = useState(true);
+  const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  useEffect(() => {
+  const loadBarbers = () => {
     fetch('/api/barbers')
       .then((res) => res.json())
       .then((data) => {
         if (Array.isArray(data)) setBarbers(data);
       })
       .finally(() => setLoading(false));
+  };
+
+  useEffect(() => {
+    loadBarbers();
   }, []);
+
+  const handleDelete = async (barber: Barber) => {
+    if (!window.confirm(t('barbers.confirmDelete'))) return;
+
+    setDeletingId(barber._id);
+    try {
+      const res = await fetch(`/api/barbers/${barber._id}`, {
+        method: 'DELETE',
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        toast.error(data.error || 'Failed');
+        return;
+      }
+      toast.success(t('barbers.deleted'));
+      setBarbers((current) => current.filter((item) => item._id !== barber._id));
+    } catch {
+      toast.error('Something went wrong');
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <ProtectedRoute allowedRoles={['admin']}>
@@ -37,7 +65,7 @@ export default function BarbersPage() {
         <div className="flex justify-end mb-4">
           <Link
             href="/barbers/new"
-            className="inline-flex items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-black hover:bg-amber-400 transition-colors"
+            className="inline-flex min-h-11 items-center gap-2 rounded-lg bg-amber-500 px-4 py-2 text-sm font-semibold text-black hover:bg-amber-400 transition-colors"
           >
             <Plus className="h-4 w-4" />
             {t('barbers.addBarber')}
@@ -67,6 +95,9 @@ export default function BarbersPage() {
                     <th className="text-start px-4 py-3 font-medium">
                       {t('common.status')}
                     </th>
+                    <th className="text-start px-4 py-3 font-medium">
+                      {t('common.actions')}
+                    </th>
                   </tr>
                 </thead>
                 <tbody>
@@ -89,6 +120,26 @@ export default function BarbersPage() {
                             ? t('common.active')
                             : t('common.inactive')}
                         </span>
+                      </td>
+                      <td className="px-4 py-3">
+                        <div className="flex items-center gap-2">
+                          <Link
+                            href={`/barbers/${barber._id}/edit`}
+                            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-zinc-700 text-amber-300 hover:bg-zinc-800"
+                            aria-label={t('common.edit')}
+                          >
+                            <Pencil className="h-4 w-4" />
+                          </Link>
+                          <button
+                            type="button"
+                            onClick={() => handleDelete(barber)}
+                            disabled={deletingId === barber._id}
+                            className="inline-flex min-h-11 min-w-11 items-center justify-center rounded-lg border border-zinc-700 text-red-400 hover:bg-zinc-800 disabled:opacity-50"
+                            aria-label={t('common.delete')}
+                          >
+                            <Trash2 className="h-4 w-4" />
+                          </button>
+                        </div>
                       </td>
                     </tr>
                   ))}

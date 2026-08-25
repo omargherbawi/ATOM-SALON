@@ -34,7 +34,33 @@
     "loadError": "Unable to load barbers. Please check your connection and try again.",
     "retry": "Try Again",
     "slotTaken": "This time slot is already booked",
-    "requiredFields": "Please fill in all fields"
+    "requiredFields": "Please fill in all fields",
+    "noSlots": "No available times for this day",
+    "yourPhone": "Phone number",
+    "yourPhonePlaceholder": "Enter your phone number",
+    "yourAppointment": "Your appointment",
+    "savedHint": "Your booking is saved on this device. You can cancel it anytime.",
+    "confirmed": "Appointment confirmed",
+    "cancelAppointment": "Cancel appointment",
+    "cancelConfirm": "Cancel this appointment? The time will become available again.",
+    "cancelled": "Appointment cancelled",
+    "bookAnother": "Book another appointment",
+    "backToAppointments": "Back to my appointment"
+  },
+  "workingHours": {
+    "title": "Working hours",
+    "hint": "Choose the days this barber works and the start/end time for each day.",
+    "from": "From",
+    "to": "To",
+    "days": {
+      "sunday": "Sunday",
+      "monday": "Monday",
+      "tuesday": "Tuesday",
+      "wednesday": "Wednesday",
+      "thursday": "Thursday",
+      "friday": "Friday",
+      "saturday": "Saturday"
+    }
   },
   "login": {
     "title": "Staff Login",
@@ -65,12 +91,16 @@
     "completed": "Completed",
     "cancelled": "Cancelled",
     "markCompleted": "Mark Completed",
-    "markCancelled": "Cancel"
+    "markCancelled": "Cancel",
+    "today": "Today",
+    "all": "All",
+    "noAppointmentsToday": "No appointments today"
   },
   "myAppointments": {
     "title": "My Appointments",
     "description": "Your scheduled clients",
-    "noAppointments": "You have no appointments yet"
+    "noAppointments": "You have no appointments yet",
+    "confirmCancel": "Cancel this appointment? The time will become available again."
   },
   "barbers": {
     "title": "Barbers",
@@ -83,6 +113,12 @@
     "created": "Barber created successfully",
     "noBarbers": "No barbers yet",
     "newTitle": "New Barber",
-    "newDescription": "Create a barber account for appointment booking"
+    "newDescription": "Create a barber account for appointment booking",
+    "editTitle": "Edit Barber",
+    "editDescription": "Update barber details and weekly working hours",
+    "updated": "Barber updated successfully",
+    "deleted": "Barber deleted",
+    "confirmDelete": "Delete this barber? Their scheduled appointments will be cancelled.",
+    "passwordHint": "Leave blank to keep the current password"
   }
 }

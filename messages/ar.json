@@ -34,7 +34,33 @@
     "loadError": "تعذر تحميل الحلاقين. يرجى التحقق من اتصالك والمحاولة مرة أخرى.",
     "retry": "حاول مرة أخرى",
     "slotTaken": "هذا الوقت محجوز بالفعل",
-    "requiredFields": "يرجى ملء جميع الحقول"
+    "requiredFields": "يرجى ملء جميع الحقول",
+    "noSlots": "لا توجد أوقات متاحة في هذا اليوم",
+    "yourPhone": "رقم الهاتف",
+    "yourPhonePlaceholder": "أدخل رقم هاتفك",
+    "yourAppointment": "موعدك",
+    "savedHint": "تم حفظ حجزك على هذا الجهاز. يمكنك إلغاؤه في أي وقت.",
+    "confirmed": "تم تأكيد الموعد",
+    "cancelAppointment": "إلغاء الموعد",
+    "cancelConfirm": "إلغاء هذا الموعد؟ سيصبح الوقت متاحاً مرة أخرى.",
+    "cancelled": "تم إلغاء الموعد",
+    "bookAnother": "حجز موعد آخر",
+    "backToAppointments": "العودة إلى موعدي"
+  },
+  "workingHours": {
+    "title": "ساعات العمل",
+    "hint": "حدد أيام عمل الحلاق ووقت البداية والنهاية لكل يوم.",
+    "from": "من",
+    "to": "إلى",
+    "days": {
+      "sunday": "الأحد",
+      "monday": "الاثنين",
+      "tuesday": "الثلاثاء",
+      "wednesday": "الأربعاء",
+      "thursday": "الخميس",
+      "friday": "الجمعة",
+      "saturday": "السبت"
+    }
   },
   "login": {
     "title": "دخول الموظفين",
@@ -65,12 +91,16 @@
     "completed": "مكتمل",
     "cancelled": "ملغى",
     "markCompleted": "تحديد كمكتمل",
-    "markCancelled": "إلغاء"
+    "markCancelled": "إلغاء",
+    "today": "اليوم",
+    "all": "الكل",
+    "noAppointmentsToday": "لا توجد مواعيد اليوم"
   },
   "myAppointments": {
     "title": "مواعيدي",
     "description": "عملاؤك المجدولون",
-    "noAppointments": "ليس لديك مواعيد بعد"
+    "noAppointments": "ليس لديك مواعيد بعد",
+    "confirmCancel": "إلغاء هذا الموعد؟ سيصبح الوقت متاحاً للحجز مرة أخرى."
   },
   "barbers": {
     "title": "الحلاقون",
@@ -83,6 +113,12 @@
     "created": "تم إنشاء الحلاق بنجاح",
     "noBarbers": "لا يوجد حلاقون بعد",
     "newTitle": "حلاق جديد",
-    "newDescription": "إنشاء حساب حلاق للحجز"
+    "newDescription": "إنشاء حساب حلاق للحجز",
+    "editTitle": "تعديل الحلاق",
+    "editDescription": "تحديث بيانات الحلاق وساعات العمل الأسبوعية",
+    "updated": "تم تحديث الحلاق بنجاح",
+    "deleted": "تم حذف الحلاق",
+    "confirmDelete": "حذف هذا الحلاق؟ سيتم إلغاء مواعيده المجدولة.",
+    "passwordHint": "اتركه فارغاً للإبقاء على كلمة المرور الحالية"
   }
 }

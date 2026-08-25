@@ -1,14 +1,16 @@
 'use client';
 
-import { useEffect, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import ProtectedRoute from '../protected-route';
 import SidebarLayout from '../components/sidebar-layout';
 import { useTranslations } from '../hooks/useTranslations';
+import { isActiveBooking, localDateString } from '@/lib/working-hours';
 
 interface Appointment {
   _id: string;
   customerName: string;
+  customerPhone?: string;
   barberName: string;
   date: string;
   time: string;
@@ -19,6 +21,13 @@ export default function AppointmentsPage() {
   const { t } = useTranslations();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
+  const [filter, setFilter] = useState<'all' | 'today'>('today');
+
+  const today = localDateString();
+  const visibleAppointments = useMemo(() => {
+    if (filter !== 'today') return appointments;
+    return appointments.filter((appt) => appt.date === today);
+  }, [appointments, filter, today]);
 
   const loadAppointments = () => {
     fetch('/api/appointments')
@@ -69,13 +78,40 @@ export default function AppointmentsPage() {
         title={t('appointments.title')}
         description={t('appointments.description')}
       >
+        <div className="flex flex-wrap gap-2 mb-4">
+          <button
+            type="button"
+            onClick={() => setFilter('today')}
+            className={`min-h-11 rounded-lg px-4 text-sm font-medium transition-colors ${
+              filter === 'today'
+                ? 'bg-amber-500 text-black'
+                : 'border border-zinc-700 text-zinc-300 hover:bg-zinc-800'
+            }`}
+          >
+            {t('appointments.today')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('all')}
+            className={`min-h-11 rounded-lg px-4 text-sm font-medium transition-colors ${
+              filter === 'all'
+                ? 'bg-amber-500 text-black'
+                : 'border border-zinc-700 text-zinc-300 hover:bg-zinc-800'
+            }`}
+          >
+            {t('appointments.all')}
+          </button>
+        </div>
+
         {loading ? (
           <div className="flex justify-center py-12">
             <div className="animate-spin rounded-full h-12 w-12 border-b-2 border-amber-400" />
           </div>
-        ) : appointments.length === 0 ? (
+        ) : visibleAppointments.length === 0 ? (
           <div className="rounded-xl border border-amber-500/20 bg-zinc-900 p-8 text-center text-zinc-400">
-            {t('appointments.noAppointments')}
+            {filter === 'today'
+              ? t('appointments.noAppointmentsToday')
+              : t('appointments.noAppointments')}
           </div>
         ) : (
           <div className="rounded-xl border border-amber-500/20 bg-zinc-900 overflow-hidden">
@@ -85,6 +121,9 @@ export default function AppointmentsPage() {
                   <tr className="border-b border-zinc-800 text-zinc-400">
                     <th className="text-start px-4 py-3 font-medium">
                       {t('appointments.customer')}
+                    </th>
+                    <th className="text-start px-4 py-3 font-medium">
+                      {t('booking.yourPhone')}
                     </th>
                     <th className="text-start px-4 py-3 font-medium">
                       {t('appointments.barber')}
@@ -104,18 +143,19 @@ export default function AppointmentsPage() {
                   </tr>
                 </thead>
                 <tbody>
-                  {appointments.map((appt) => (
+                  {visibleAppointments.map((appt) => (
                     <tr
                       key={appt._id}
                       className="border-b border-zinc-800/50 hover:bg-zinc-800/30"
                     >
                       <td className="px-4 py-3">{appt.customerName}</td>
+                      <td className="px-4 py-3">{appt.customerPhone || '—'}</td>
                       <td className="px-4 py-3">{appt.barberName}</td>
                       <td className="px-4 py-3">{appt.date}</td>
                       <td className="px-4 py-3">{appt.time}</td>
                       <td className="px-4 py-3">{statusBadge(appt.status)}</td>
                       <td className="px-4 py-3">
-                        {appt.status === 'scheduled' && (
+                        {isActiveBooking(appt.status) && (
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
