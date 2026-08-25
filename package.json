@@ -3,20 +3,25 @@
   "version": "0.1.0",
   "private": true,
   "scripts": {
-    "dev": "next dev",
     "build": "next build",
+    "dev": "next dev",
     "start": "next start",
     "lint": "eslint",
-    "seed": "tsx --env-file=.env.local scripts/seed-db.ts"
+    "seed": "tsx --env-file=.env.local scripts/seed-db.ts",
+    "preview": "opennextjs-cloudflare build && opennextjs-cloudflare preview",
+    "deploy": "opennextjs-cloudflare build && opennextjs-cloudflare deploy",
+    "upload": "opennextjs-cloudflare build && opennextjs-cloudflare upload",
+    "cf-typegen": "wrangler types --env-interface CloudflareEnv cloudflare-env.d.ts"
   },
   "dependencies": {
     "@auth/mongodb-adapter": "^3.11.2",
+    "@opennextjs/cloudflare": "^1.20.2",
     "@tanstack/react-table": "^8.21.3",
     "bcryptjs": "^3.0.3",
     "lucide-react": "^1.21.0",
     "mongodb": "^6.21.0",
     "mongoose": "^9.7.3",
-    "next": "16.2.9",
+    "next": "^16.3.3",
     "next-auth": "^4.24.14",
     "react": "19.2.4",
     "react-dom": "19.2.4",

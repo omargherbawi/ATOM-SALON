@@ -1,13 +1,13 @@
 import { MongoClient, type MongoClientOptions } from 'mongodb';
 
-const uri = process.env.MONGODB_URI;
-
 const options: MongoClientOptions = {
-  maxPoolSize: 5,
+  maxPoolSize: 1,
   minPoolSize: 0,
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
-  maxIdleTimeMS: 10000,
+  serverSelectionTimeoutMS: 8000,
+  connectTimeoutMS: 8000,
+  socketTimeoutMS: 20000,
+  maxIdleTimeMS: 5000,
+  family: 4,
 };
 
 declare global {
@@ -16,6 +16,7 @@ declare global {
 }
 
 function getClientPromise(): Promise<MongoClient> {
+  const uri = process.env.MONGODB_URI;
   if (!uri) {
     return Promise.reject(
       new Error('MONGODB_URI environment variable is not defined')
@@ -33,4 +34,4 @@ function getClientPromise(): Promise<MongoClient> {
   return global._mongoClientPromise;
 }
 
-export default getClientPromise();
+export default getClientPromise;

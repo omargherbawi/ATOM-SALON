@@ -21,11 +21,13 @@ if (!global.mongooseCache) {
 
 const MONGODB_OPTIONS: mongoose.ConnectOptions = {
   bufferCommands: false,
-  maxPoolSize: 5,
+  maxPoolSize: 1,
   minPoolSize: 0,
-  serverSelectionTimeoutMS: 5000,
-  socketTimeoutMS: 45000,
-  maxIdleTimeMS: 10000,
+  serverSelectionTimeoutMS: 8000,
+  connectTimeoutMS: 8000,
+  socketTimeoutMS: 20000,
+  maxIdleTimeMS: 5000,
+  family: 4,
 };
 
 function isConnected(): boolean {
