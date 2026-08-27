@@ -1,7 +1,7 @@
 'use client';
 
 import { Suspense, useState } from 'react';
-import { signIn } from 'next-auth/react';
+import { SessionProvider, signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
 import { Loader2, Scissors } from 'lucide-react';
@@ -123,14 +123,16 @@ function LoginForm() {
 
 export default function LoginPage() {
   return (
-    <Suspense
-      fallback={
-        <div className="min-h-screen flex items-center justify-center bg-black">
-          <Loader2 className="h-12 w-12 animate-spin text-amber-400" />
-        </div>
-      }
-    >
-      <LoginForm />
-    </Suspense>
+    <SessionProvider refetchOnWindowFocus={false} refetchWhenOffline={false}>
+      <Suspense
+        fallback={
+          <div className="min-h-screen flex items-center justify-center bg-black">
+            <Loader2 className="h-12 w-12 animate-spin text-amber-400" />
+          </div>
+        }
+      >
+        <LoginForm />
+      </Suspense>
+    </SessionProvider>
   );
 }

@@ -4,6 +4,7 @@ import Customer from '@/models/Customer';
 import Appointment from '@/models/Appointment';
 import { isActiveBooking } from '@/lib/working-hours';
 import { readGuestToken } from '@/lib/guest';
+import { invalidateAvailabilityCache } from '@/lib/public-cache';
 
 export const runtime = 'nodejs';
 
@@ -51,6 +52,7 @@ export async function POST(
 
     appointment.status = 'cancelled';
     await appointment.save();
+    await invalidateAvailabilityCache(appointment.barberId, appointment.date);
 
     return NextResponse.json({
       message: 'Appointment cancelled',

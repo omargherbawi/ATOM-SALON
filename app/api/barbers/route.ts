@@ -1,33 +1,44 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { getServerSession } from 'next-auth/next';
 import bcrypt from 'bcryptjs';
-import { authOptions } from '../auth/[...nextauth]/route';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
+import { getAdminTokenFromRequest } from '@/lib/require-admin-request';
 import {
   defaultWorkingHours,
   normalizeWorkingHours,
 } from '@/lib/working-hours';
+import { invalidateBarberCaches } from '@/lib/public-cache';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
+
+function mongoErrorMessage(error: unknown) {
+  if (
+    error &&
+    typeof error === 'object' &&
+    'code' in error &&
+    (error as { code?: number }).code === 11000
+  ) {
+    return 'Email already in use';
+  }
+  if (error instanceof Error && error.message) {
+    return error.message;
+  }
+  return 'Internal server error';
+}
 
 export async function GET(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    const role = session.user.role || '';
-    if (role !== 'admin') {
+    const token = await getAdminTokenFromRequest(request);
+    if (!token) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
     await dbConnect();
 
     const query: Record<string, unknown> = { role: 'barber' };
-    if (session.user.department) {
-      query.department = session.user.department;
+    if (token.department) {
+      query.department = token.department;
     }
 
     const barbers = await User.find(query)
@@ -43,12 +54,8 @@ export async function GET(request: NextRequest) {
 
 export async function POST(request: NextRequest) {
   try {
-    const session = await getServerSession(authOptions);
-    if (!session?.user?.email) {
-      return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
-    }
-
-    if (session.user.role !== 'admin') {
+    const token = await getAdminTokenFromRequest(request);
+    if (!token) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -75,7 +82,7 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Email already in use' }, { status: 400 });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 12);
+    const hashedPassword = await bcrypt.hash(password, 10);
     const hours = normalizeWorkingHours(workingHours) ?? defaultWorkingHours();
 
     const barber = await User.create({
@@ -83,20 +90,30 @@ export async function POST(request: NextRequest) {
       email: email.toLowerCase().trim(),
       password: hashedPassword,
       role: 'barber',
-      department: session.user.department,
+      ...(typeof token.department === 'string' && token.department
+        ? { department: token.department }
+        : {}),
       active: true,
       workingHours: hours,
     });
 
     const result = barber.toObject();
     delete result.password;
+    try {
+      await invalidateBarberCaches();
+    } catch (cacheError) {
+      console.error('invalidateBarberCaches error:', cacheError);
+    }
 
     return NextResponse.json({
       message: 'Barber created successfully',
-      data: result,
+      data: { ...result, _id: String(barber._id) },
     });
   } catch (error) {
     console.error('POST /api/barbers error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: mongoErrorMessage(error) },
+      { status: 500 }
+    );
   }
 }

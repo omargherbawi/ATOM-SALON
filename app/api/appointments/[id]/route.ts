@@ -3,6 +3,7 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]/route';
 import dbConnect from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
+import { invalidateAvailabilityCache } from '@/lib/public-cache';
 
 export const runtime = 'nodejs';
 
@@ -71,6 +72,7 @@ export async function PUT(
     if (body.notes !== undefined) appointment.notes = body.notes;
 
     await appointment.save();
+    await invalidateAvailabilityCache(appointment.barberId, appointment.date);
 
     return NextResponse.json({
       message: 'Appointment updated',
@@ -103,6 +105,7 @@ export async function DELETE(
     if (!appointment) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
+    await invalidateAvailabilityCache(appointment.barberId, appointment.date);
 
     return NextResponse.json({ message: 'Appointment deleted' });
   } catch (error) {

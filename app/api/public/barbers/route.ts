@@ -1,21 +1,15 @@
 import { NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import User from '@/models/User';
+import { getPublicBarbers } from '@/lib/public-data';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET() {
   try {
-    await dbConnect();
-
-    const barbers = await User.find({ role: 'barber', active: true })
-      .select('name _id')
-      .sort({ name: 1 })
-      .lean();
-
+    const barbers = await getPublicBarbers();
     return NextResponse.json(barbers, {
       headers: {
-        'Cache-Control': 'public, s-maxage=60, stale-while-revalidate=300',
+        'Cache-Control': 'public, s-maxage=120, stale-while-revalidate=300',
       },
     });
   } catch (error) {

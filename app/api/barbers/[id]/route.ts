@@ -6,6 +6,7 @@ import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import Appointment from '@/models/Appointment';
 import { normalizeWorkingHours } from '@/lib/working-hours';
+import { invalidateBarberCaches } from '@/lib/public-cache';
 
 export const runtime = 'nodejs';
 
@@ -95,6 +96,7 @@ export async function PUT(
     }
 
     await barber.save();
+    await invalidateBarberCaches();
 
     const result = barber.toObject();
     delete result.password;
@@ -137,6 +139,7 @@ export async function DELETE(
     );
 
     await User.deleteOne({ _id: id });
+    await invalidateBarberCaches();
 
     return NextResponse.json({ message: 'Barber deleted successfully' });
   } catch (error) {

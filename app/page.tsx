@@ -35,7 +35,7 @@ interface GuestAppointment {
 
 export default function BookingPage() {
   const { t } = useTranslations();
-  const { settings } = useSettings();
+  const { settings, hydrateSettings } = useSettings();
   const [barbers, setBarbers] = useState<Barber[]>([]);
   const [barbersLoading, setBarbersLoading] = useState(true);
   const [barbersError, setBarbersError] = useState(false);
@@ -128,22 +128,87 @@ export default function BookingPage() {
 
   useEffect(() => {
     const controller = new AbortController();
-    void loadBarbers(controller.signal);
+    const requestId = ++barbersRequestId.current;
+    setBarbersLoading(true);
+    setBarbersError(false);
+
+    const profile = readGuestProfile();
+    const query = profile?.token
+      ? `/api/public/bootstrap?token=${encodeURIComponent(profile.token)}`
+      : '/api/public/bootstrap';
+
+    fetch(query, { credentials: 'include', signal: controller.signal })
+      .then(async (res) => {
+        if (!res.ok) throw new Error('Failed to load booking data');
+        return res.json();
+      })
+      .then((data) => {
+        if (requestId !== barbersRequestId.current) return;
+
+        if (data.settings?.systemTitle) {
+          hydrateSettings({
+            systemTitle: data.settings.systemTitle,
+            tagline: data.settings.tagline,
+          });
+        }
+
+        if (Array.isArray(data.barbers)) {
+          setBarbers(data.barbers);
+        } else {
+          setBarbersError(true);
+        }
+
+        const list: GuestAppointment[] = Array.isArray(data.appointments)
+          ? data.appointments
+          : [];
+        setAppointments(list);
+        setShowForm(!list.some((item) => isActiveBooking(item.status)));
+
+        if (data.guestToken || profile?.token) {
+          saveGuestProfile({
+            token: data.guestToken || profile?.token || '',
+            name: data.customer?.name || profile?.name || '',
+            phone: data.customer?.phone || profile?.phone || '',
+          });
+        }
+
+        if (data.customer?.name) {
+          setForm((current) => ({
+            ...current,
+            customerName: current.customerName || data.customer.name,
+            customerPhone: current.customerPhone || data.customer.phone || '',
+          }));
+        } else if (profile) {
+          setForm((current) => ({
+            ...current,
+            customerName: current.customerName || profile.name,
+            customerPhone: current.customerPhone || profile.phone,
+          }));
+        }
+      })
+      .catch((error) => {
+        if (requestId !== barbersRequestId.current) return;
+        if (
+          controller.signal.aborted ||
+          (error instanceof Error && error.name === 'AbortError')
+        ) {
+          return;
+        }
+        setBarbersError(true);
+        setShowForm(true);
+      })
+      .finally(() => {
+        if (requestId === barbersRequestId.current) {
+          setBarbersLoading(false);
+          setGuestLoading(false);
+        }
+      });
+
     return () => {
       barbersRequestId.current += 1;
       controller.abort();
     };
-  }, [loadBarbers]);
-
-  useEffect(() => {
-    loadGuestAppointments()
-      .then((list) => {
-        const hasUpcoming = list.some((item) => isActiveBooking(item.status));
-        setShowForm(!hasUpcoming);
-      })
-      .catch(() => setShowForm(true))
-      .finally(() => setGuestLoading(false));
-  }, []);
+  }, [hydrateSettings]);
 
   useEffect(() => {
     if (!form.barberId || !form.date) {

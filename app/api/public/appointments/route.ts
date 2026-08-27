@@ -14,6 +14,7 @@ import {
   readGuestToken,
   withGuestCookie,
 } from '@/lib/guest';
+import { invalidateAvailabilityCache } from '@/lib/public-cache';
 
 export const runtime = 'nodejs';
 
@@ -111,6 +112,7 @@ export async function POST(request: NextRequest) {
       barberName: barber.name,
       status: 'scheduled',
     });
+    await invalidateAvailabilityCache(barberId, date);
 
     const response = NextResponse.json({
       message: 'Appointment booked successfully',

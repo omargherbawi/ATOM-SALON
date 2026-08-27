@@ -1,6 +1,6 @@
 'use client';
 
-import { useSession } from 'next-auth/react';
+import { useSession, SessionProvider } from 'next-auth/react';
 import { useRouter, usePathname } from 'next/navigation';
 import { useEffect } from 'react';
 import { Loader2 } from 'lucide-react';
@@ -10,7 +10,7 @@ interface ProtectedRouteProps {
   allowedRoles?: string[];
 }
 
-export default function ProtectedRoute({
+function ProtectedRouteInner({
   children,
   allowedRoles = ['admin', 'barber'],
 }: ProtectedRouteProps) {
@@ -54,4 +54,17 @@ export default function ProtectedRoute({
   }
 
   return <>{children}</>;
+}
+
+export default function ProtectedRoute({
+  children,
+  allowedRoles,
+}: ProtectedRouteProps) {
+  return (
+    <SessionProvider refetchOnWindowFocus={false} refetchWhenOffline={false}>
+      <ProtectedRouteInner allowedRoles={allowedRoles}>
+        {children}
+      </ProtectedRouteInner>
+    </SessionProvider>
+  );
 }

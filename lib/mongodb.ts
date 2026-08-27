@@ -21,6 +21,7 @@ if (!global.mongooseCache) {
 
 const MONGODB_OPTIONS: mongoose.ConnectOptions = {
   bufferCommands: false,
+  autoIndex: false,
   maxPoolSize: 1,
   minPoolSize: 0,
   serverSelectionTimeoutMS: 8000,

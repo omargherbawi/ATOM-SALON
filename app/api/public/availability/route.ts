@@ -1,14 +1,8 @@
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import User from '@/models/User';
-import Appointment from '@/models/Appointment';
-import {
-  ACTIVE_BOOKING_STATUSES,
-  filterPastSlots,
-  getWorkingSlotsForDate,
-} from '@/lib/working-hours';
+import { getAvailableSlots } from '@/lib/public-data';
 
 export const runtime = 'nodejs';
+export const dynamic = 'force-dynamic';
 
 export async function GET(request: NextRequest) {
   try {
@@ -23,31 +17,10 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    await dbConnect();
-
-    const barber = await User.findOne({
-      _id: barberId,
-      role: 'barber',
-      active: true,
-    }).select('workingHours');
-
-    if (!barber) {
+    const available = await getAvailableSlots(barberId, date);
+    if (!available) {
       return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
     }
-
-    const booked = await Appointment.find({
-      barberId,
-      date,
-      status: { $in: [...ACTIVE_BOOKING_STATUSES] },
-    })
-      .select('time')
-      .lean();
-
-    const bookedTimes = new Set(booked.map((item) => item.time));
-    const workingSlots = getWorkingSlotsForDate(barber.workingHours, date);
-    const available = filterPastSlots(date, workingSlots).filter(
-      (slot) => !bookedTimes.has(slot)
-    );
 
     return NextResponse.json({ available });
   } catch (error) {
