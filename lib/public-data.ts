@@ -1,18 +1,14 @@
-import dbConnect from '@/lib/mongodb';
-import User from '@/models/User';
-import Settings from '@/models/Settings';
-import Customer from '@/models/Customer';
-import Appointment from '@/models/Appointment';
+import { getMongoDb, ObjectId } from '@/lib/mongodb';
 import {
   PUBLIC_CACHE_KEYS,
-  readPublicCache,
-  writePublicCache,
   availabilityCacheKey,
+  cachedRead,
 } from '@/lib/public-cache';
 import {
   ACTIVE_BOOKING_STATUSES,
   filterPastSlots,
   getWorkingSlotsForDate,
+  type WorkingHour,
 } from '@/lib/working-hours';
 
 export type PublicBarber = {
@@ -35,45 +31,52 @@ export type GuestAppointment = {
   status: string;
 };
 
+const DEFAULT_SETTINGS: PublicSettings = {
+  systemTitle: 'Atom Salon',
+  tagline: 'Premium Barbershop for Men',
+};
+
 export async function getPublicSettings(): Promise<PublicSettings> {
-  const cached = await readPublicCache<PublicSettings>(
-    PUBLIC_CACHE_KEYS.settings
-  );
-  if (cached) return cached;
+  return cachedRead<PublicSettings>({
+    key: PUBLIC_CACHE_KEYS.settings,
+    freshSeconds: 900,
+    keepSeconds: 86_400,
+    load: async () => {
+      const db = await getMongoDb();
+      const settings = await db
+        .collection('settings')
+        .findOne({}, { projection: { systemTitle: 1, tagline: 1 } });
 
-  await dbConnect();
-  let settings = await Settings.findOne().lean();
-  if (!settings) {
-    const created = await Settings.create({});
-    settings = created.toObject();
-  }
+      if (!settings) return DEFAULT_SETTINGS;
 
-  const payload: PublicSettings = {
-    systemTitle: settings.systemTitle,
-    tagline: settings.tagline,
-  };
-  await writePublicCache(PUBLIC_CACHE_KEYS.settings, payload, 300);
-  return payload;
+      return {
+        systemTitle: settings.systemTitle ?? DEFAULT_SETTINGS.systemTitle,
+        tagline: settings.tagline ?? DEFAULT_SETTINGS.tagline,
+      };
+    },
+  });
 }
 
 export async function getPublicBarbers(): Promise<PublicBarber[]> {
-  const cached = await readPublicCache<PublicBarber[]>(
-    PUBLIC_CACHE_KEYS.barbers
-  );
-  if (cached) return cached;
+  return cachedRead<PublicBarber[]>({
+    key: PUBLIC_CACHE_KEYS.barbers,
+    freshSeconds: 900,
+    keepSeconds: 86_400,
+    load: async () => {
+      const db = await getMongoDb();
+      const barbers = await db
+        .collection('users')
+        .find({ role: 'barber', active: true })
+        .project({ name: 1 })
+        .sort({ name: 1 })
+        .toArray();
 
-  await dbConnect();
-  const barbers = await User.find({ role: 'barber', active: true })
-    .select('name _id')
-    .sort({ name: 1 })
-    .lean();
-
-  const payload = barbers.map((barber) => ({
-    _id: String(barber._id),
-    name: barber.name,
-  }));
-  await writePublicCache(PUBLIC_CACHE_KEYS.barbers, payload, 120);
-  return payload;
+      return barbers.map((barber) => ({
+        _id: String(barber._id),
+        name: barber.name,
+      }));
+    },
+  });
 }
 
 export async function getGuestAppointments(token: string): Promise<{
@@ -81,18 +84,21 @@ export async function getGuestAppointments(token: string): Promise<{
   guestToken: string;
   appointments: GuestAppointment[];
 }> {
-  await dbConnect();
+  const db = await getMongoDb();
 
-  const customer = await Customer.findOne({ guestToken: token }).lean();
+  const customer = await db.collection('customers').findOne({
+    guestToken: token,
+  });
   if (!customer) {
     return { customer: null, guestToken: token, appointments: [] };
   }
 
-  const appointments = await Appointment.find({
-    customerId: customer._id.toString(),
-  })
+  const appointments = await db
+    .collection('appointments')
+    .find({ customerId: String(customer._id) })
     .sort({ date: 1, time: 1 })
-    .lean();
+    .limit(50)
+    .toArray();
 
   return {
     customer: {
@@ -112,35 +118,64 @@ export async function getGuestAppointments(token: string): Promise<{
   };
 }
 
-export async function getAvailableSlots(barberId: string, date: string) {
-  const cacheKey = availabilityCacheKey(barberId, date);
-  const cached = await readPublicCache<string[]>(cacheKey);
-  if (cached) return cached;
+type ScheduleSnapshot = {
+  workingHours: WorkingHour[];
+  booked: string[];
+} | null;
 
-  await dbConnect();
+/**
+ * The barber's hours and booked times are cached, but the past-slot filter runs
+ * on every read so a stale entry can never offer a time that already passed.
+ */
+export async function getAvailableSlots(
+  barberId: string,
+  date: string
+): Promise<string[] | null> {
+  let objectId: InstanceType<typeof ObjectId>;
+  try {
+    objectId = new ObjectId(barberId);
+  } catch {
+    return null;
+  }
 
-  const barber = await User.findOne({
-    _id: barberId,
-    role: 'barber',
-    active: true,
-  }).select('workingHours');
+  const snapshot = await cachedRead<ScheduleSnapshot>({
+    key: availabilityCacheKey(barberId, date),
+    freshSeconds: 30,
+    keepSeconds: 86_400,
+    load: async () => {
+      const db = await getMongoDb();
 
-  if (!barber) return null;
+      const barber = await db
+        .collection('users')
+        .findOne(
+          { _id: objectId, role: 'barber', active: true },
+          { projection: { workingHours: 1 } }
+        );
 
-  const booked = await Appointment.find({
-    barberId,
-    date,
-    status: { $in: [...ACTIVE_BOOKING_STATUSES] },
-  })
-    .select('time')
-    .lean();
+      if (!barber) return null;
 
-  const bookedTimes = new Set(booked.map((item) => item.time));
-  const workingSlots = getWorkingSlotsForDate(barber.workingHours, date);
-  const available = filterPastSlots(date, workingSlots).filter(
+      const booked = await db
+        .collection('appointments')
+        .find({
+          barberId,
+          date,
+          status: { $in: [...ACTIVE_BOOKING_STATUSES] },
+        })
+        .project({ time: 1 })
+        .toArray();
+
+      return {
+        workingHours: (barber.workingHours ?? []) as WorkingHour[],
+        booked: booked.map((item) => String(item.time)),
+      };
+    },
+  });
+
+  if (!snapshot) return null;
+
+  const bookedTimes = new Set(snapshot.booked);
+  const workingSlots = getWorkingSlotsForDate(snapshot.workingHours, date);
+  return filterPastSlots(date, workingSlots).filter(
     (slot) => !bookedTimes.has(slot)
   );
-
-  await writePublicCache(cacheKey, available, 20);
-  return available;
 }

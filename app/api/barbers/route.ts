@@ -1,7 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
 import bcrypt from 'bcryptjs';
-import dbConnect from '@/lib/mongodb';
-import User from '@/models/User';
+import { getMongoDb } from '@/lib/mongodb';
 import { getAdminTokenFromRequest } from '@/lib/require-admin-request';
 import {
   defaultWorkingHours,
@@ -24,7 +23,21 @@ function mongoErrorMessage(error: unknown) {
   if (error instanceof Error && error.message) {
     return error.message;
   }
-  return 'Internal server error';
+  return 'Could not create barber';
+}
+
+function serializeBarber(doc: Record<string, unknown>) {
+  return {
+    _id: String(doc._id),
+    name: doc.name,
+    email: doc.email,
+    role: doc.role,
+    active: doc.active,
+    department: doc.department ?? undefined,
+    workingHours: doc.workingHours ?? [],
+    createdAt: doc.createdAt,
+    updatedAt: doc.updatedAt,
+  };
 }
 
 export async function GET(request: NextRequest) {
@@ -34,21 +47,26 @@ export async function GET(request: NextRequest) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    await dbConnect();
-
+    const db = await getMongoDb();
     const query: Record<string, unknown> = { role: 'barber' };
-    if (token.department) {
+    if (typeof token.department === 'string' && token.department) {
       query.department = token.department;
     }
 
-    const barbers = await User.find(query)
-      .select('-password')
-      .sort({ name: 1 });
+    const barbers = await db
+      .collection('users')
+      .find(query)
+      .project({ password: 0 })
+      .sort({ name: 1 })
+      .toArray();
 
-    return NextResponse.json(barbers);
+    return NextResponse.json(barbers.map((doc) => serializeBarber(doc)));
   } catch (error) {
     console.error('GET /api/barbers error:', error);
-    return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
+    return NextResponse.json(
+      { error: mongoErrorMessage(error) },
+      { status: 500 }
+    );
   }
 }
 
@@ -75,30 +93,44 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    await dbConnect();
+    const db = await getMongoDb();
+    const users = db.collection('users');
+    const normalizedEmail = String(email).toLowerCase().trim();
 
-    const existing = await User.findOne({ email: email.toLowerCase() });
+    const existing = await users.findOne({ email: normalizedEmail });
     if (existing) {
       return NextResponse.json({ error: 'Email already in use' }, { status: 400 });
     }
 
-    const hashedPassword = await bcrypt.hash(password, 10);
-    const hours = normalizeWorkingHours(workingHours) ?? defaultWorkingHours();
+    let hashedPassword: string;
+    try {
+      hashedPassword = bcrypt.hashSync(password, 8);
+    } catch (hashError) {
+      console.error('bcrypt.hashSync error:', hashError);
+      return NextResponse.json(
+        { error: mongoErrorMessage(hashError) },
+        { status: 500 }
+      );
+    }
 
-    const barber = await User.create({
-      name: name.trim(),
-      email: email.toLowerCase().trim(),
+    const hours = normalizeWorkingHours(workingHours) ?? defaultWorkingHours();
+    const now = new Date();
+    const doc: Record<string, unknown> = {
+      name: String(name).trim(),
+      email: normalizedEmail,
       password: hashedPassword,
       role: 'barber',
-      ...(typeof token.department === 'string' && token.department
-        ? { department: token.department }
-        : {}),
       active: true,
       workingHours: hours,
-    });
+      createdAt: now,
+      updatedAt: now,
+    };
 
-    const result = barber.toObject();
-    delete result.password;
+    if (typeof token.department === 'string' && token.department) {
+      doc.department = token.department;
+    }
+
+    const inserted = await users.insertOne(doc);
     try {
       await invalidateBarberCaches();
     } catch (cacheError) {
@@ -107,7 +139,7 @@ export async function POST(request: NextRequest) {
 
     return NextResponse.json({
       message: 'Barber created successfully',
-      data: { ...result, _id: String(barber._id) },
+      data: serializeBarber({ ...doc, _id: inserted.insertedId }),
     });
   } catch (error) {
     console.error('POST /api/barbers error:', error);

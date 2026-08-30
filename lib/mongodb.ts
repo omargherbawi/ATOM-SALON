@@ -19,15 +19,23 @@ if (!global.mongooseCache) {
   global.mongooseCache = cached;
 }
 
+// maxIdleTimeMS must stay high: a Worker isolate is reused across requests, and
+// dropping the socket after a few seconds forced a fresh TLS handshake to Atlas
+// (~2s) on almost every request.
 const MONGODB_OPTIONS: mongoose.ConnectOptions = {
   bufferCommands: false,
   autoIndex: false,
-  maxPoolSize: 1,
+  // A pool of 1 serialized every query behind a single socket, so concurrent
+  // requests queued until they timed out.
+  maxPoolSize: 5,
   minPoolSize: 0,
-  serverSelectionTimeoutMS: 8000,
-  connectTimeoutMS: 8000,
-  socketTimeoutMS: 20000,
-  maxIdleTimeMS: 5000,
+  serverSelectionTimeoutMS: 5000,
+  connectTimeoutMS: 5000,
+  // A fresh socket on a cold isolate sometimes accepts a query and never
+  // answers. The driver's retry then succeeds, so this timeout is kept just
+  // above our slowest real query to make that retry happen quickly.
+  socketTimeoutMS: 2500,
+  maxIdleTimeMS: 270_000,
   family: 4,
 };
 
@@ -66,6 +74,21 @@ async function dbConnect(): Promise<typeof mongoose> {
 
   cached.conn = await cached.promise;
   return cached.conn;
+}
+
+// Use the driver instance bundled with Mongoose so ObjectId values match the
+// types of the collections returned by getMongoDb().
+export const ObjectId = mongoose.mongo.ObjectId;
+
+export async function getMongoDb() {
+  const mongooseInstance = await dbConnect();
+  const db = mongooseInstance.connection.db;
+  if (!db) {
+    throw new Error(
+      'MongoDB connected but no database selected. MONGODB_URI must include /atom_salon'
+    );
+  }
+  return db;
 }
 
 export default dbConnect;

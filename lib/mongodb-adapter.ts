@@ -6,7 +6,7 @@ const options: MongoClientOptions = {
   serverSelectionTimeoutMS: 8000,
   connectTimeoutMS: 8000,
   socketTimeoutMS: 20000,
-  maxIdleTimeMS: 5000,
+  maxIdleTimeMS: 270_000,
   family: 4,
 };
 

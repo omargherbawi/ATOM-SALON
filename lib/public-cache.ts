@@ -1,14 +1,37 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare';
 
-const MEMORY_TTL_MS = 60_000;
+// Cold MongoDB connects from a Worker isolate can hang for 15-20s, which used
+// to surface as a 1101 "Worker threw exception". So reads never block on Atlas:
+// we keep entries in KV long after they go stale, serve the stale copy
+// instantly, and refresh in the background.
+//
+// Layers, fastest first:
+//   1. isolate memory - free, dies with the isolate
+//   2. Cache API      - per data center
+//   3. Workers KV     - global, so a cold city never waits on Atlas
 const CACHE_NAME = 'atom-salon-public';
+const KV_MIN_TTL_SECONDS = 60;
+const LOAD_TIMEOUT_MS = 20_000;
 
-type MemoryEntry = {
-  expiresAt: number;
-  value: unknown;
+type Envelope<T> = {
+  v: T;
+  f: number;
 };
 
-const memoryCache = new Map<string, MemoryEntry>();
+// Minimal shape of the KV binding. Pulling in the full Workers type package
+// globally would shadow the DOM types the client components rely on.
+type PublicCacheKv = {
+  get<T>(key: string, type: 'json'): Promise<T | null>;
+  put(
+    key: string,
+    value: string,
+    options?: { expirationTtl?: number }
+  ): Promise<void>;
+  delete(key: string): Promise<void>;
+};
+
+const memoryCache = new Map<string, Envelope<unknown>>();
+const inFlight = new Map<string, Promise<unknown>>();
 
 export const PUBLIC_CACHE_KEYS = {
   barbers: 'public:barbers',
@@ -20,15 +43,11 @@ function availabilityKey(barberId: string, date: string) {
 }
 
 function cacheRequest(key: string) {
-  return new Request(`https://atom-salon.cache/${key}`);
-}
-
-function getCacheStorage(): CacheStorage | undefined {
-  return (globalThis as { caches?: CacheStorage }).caches;
+  return new Request(`https://atom-salon.cache/${encodeURIComponent(key)}`);
 }
 
 async function openCache(): Promise<Cache | null> {
-  const cacheStorage = getCacheStorage();
+  const cacheStorage = (globalThis as { caches?: CacheStorage }).caches;
   if (!cacheStorage) return null;
   try {
     return await cacheStorage.open(CACHE_NAME);
@@ -37,66 +56,191 @@ async function openCache(): Promise<Cache | null> {
   }
 }
 
-export async function readPublicCache<T>(key: string): Promise<T | null> {
-  const now = Date.now();
-  const memoryHit = memoryCache.get(key);
-  if (memoryHit && memoryHit.expiresAt > now) {
-    return memoryHit.value as T;
-  }
-
-  const cache = await openCache();
-  if (!cache) return null;
-
+async function getContext() {
   try {
-    const match = await cache.match(cacheRequest(key));
-    if (!match) return null;
-    const value = (await match.json()) as T;
-    memoryCache.set(key, { expiresAt: now + MEMORY_TTL_MS, value });
-    return value;
+    return await getCloudflareContext({ async: true });
   } catch {
     return null;
   }
 }
 
-export async function writePublicCache(
-  key: string,
-  value: unknown,
-  maxAgeSeconds: number
-) {
-  memoryCache.set(key, {
-    expiresAt: Date.now() + Math.min(MEMORY_TTL_MS, maxAgeSeconds * 1000),
-    value,
-  });
+async function getKv(): Promise<PublicCacheKv | null> {
+  const context = await getContext();
+  const kv = (context?.env as { PUBLIC_CACHE?: PublicCacheKv } | undefined)
+    ?.PUBLIC_CACHE;
+  return kv ?? null;
+}
+
+function background(promise: Promise<unknown>) {
+  void promise.catch(() => {});
+  void (async () => {
+    const context = await getContext();
+    context?.ctx.waitUntil(promise.catch(() => {}));
+  })();
+}
+
+async function readEnvelope<T>(key: string): Promise<Envelope<T> | null> {
+  const fromMemory = memoryCache.get(key) as Envelope<T> | undefined;
+  if (fromMemory) return fromMemory;
 
   const cache = await openCache();
-  if (!cache) return;
-
-  const put = cache.put(
-    cacheRequest(key),
-    new Response(JSON.stringify(value), {
-      headers: {
-        'Content-Type': 'application/json',
-        'Cache-Control': `public, max-age=${maxAgeSeconds}`,
-      },
-    })
-  );
-
-  try {
-    const { ctx } = await getCloudflareContext({ async: true });
-    ctx.waitUntil(put);
-  } catch {
-    await put;
+  if (cache) {
+    try {
+      const match = await cache.match(cacheRequest(key));
+      if (match) {
+        const envelope = (await match.json()) as Envelope<T>;
+        memoryCache.set(key, envelope);
+        return envelope;
+      }
+    } catch {
+      // fall through to KV
+    }
   }
+
+  const kv = await getKv();
+  if (kv) {
+    try {
+      const envelope = await kv.get<Envelope<T>>(key, 'json');
+      if (envelope) {
+        memoryCache.set(key, envelope);
+        return envelope;
+      }
+    } catch {
+      return null;
+    }
+  }
+
+  return null;
+}
+
+async function writeEnvelope<T>(
+  key: string,
+  envelope: Envelope<T>,
+  keepSeconds: number
+) {
+  memoryCache.set(key, envelope);
+
+  const body = JSON.stringify(envelope);
+  const writes: Promise<unknown>[] = [];
+
+  const cache = await openCache();
+  if (cache) {
+    writes.push(
+      cache.put(
+        cacheRequest(key),
+        new Response(body, {
+          headers: {
+            'Content-Type': 'application/json',
+            'Cache-Control': `public, max-age=${keepSeconds}`,
+          },
+        })
+      )
+    );
+  }
+
+  const kv = await getKv();
+  if (kv) {
+    writes.push(
+      kv.put(key, body, {
+        expirationTtl: Math.max(KV_MIN_TTL_SECONDS, keepSeconds),
+      })
+    );
+  }
+
+  if (writes.length > 0) {
+    await Promise.allSettled(writes);
+  }
+}
+
+function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
+  return new Promise<T>((resolve, reject) => {
+    const timer = setTimeout(
+      () => reject(new Error(`Database timed out after ${ms}ms`)),
+      ms
+    );
+    promise.then(
+      (value) => {
+        clearTimeout(timer);
+        resolve(value);
+      },
+      (error) => {
+        clearTimeout(timer);
+        reject(error);
+      }
+    );
+  });
+}
+
+function refresh<T>(
+  key: string,
+  load: () => Promise<T>,
+  freshSeconds: number,
+  keepSeconds: number
+): Promise<T> {
+  const existing = inFlight.get(key) as Promise<T> | undefined;
+  if (existing) return existing;
+
+  const task = (async () => {
+    try {
+      const value = await withTimeout(load(), LOAD_TIMEOUT_MS);
+      await writeEnvelope(
+        key,
+        { v: value, f: Date.now() + freshSeconds * 1000 },
+        keepSeconds
+      );
+      return value;
+    } finally {
+      inFlight.delete(key);
+    }
+  })();
+
+  inFlight.set(key, task);
+  return task;
+}
+
+/**
+ * Returns cached data immediately when present. A stale entry is served right
+ * away and refreshed in the background, so a slow Atlas connect never delays
+ * the visitor.
+ */
+export async function cachedRead<T>(options: {
+  key: string;
+  freshSeconds: number;
+  keepSeconds: number;
+  load: () => Promise<T>;
+}): Promise<T> {
+  const { key, freshSeconds, keepSeconds, load } = options;
+  const envelope = await readEnvelope<T>(key);
+
+  if (envelope) {
+    if (envelope.f <= Date.now()) {
+      background(refresh(key, load, freshSeconds, keepSeconds));
+    }
+    return envelope.v;
+  }
+
+  return refresh(key, load, freshSeconds, keepSeconds);
 }
 
 export async function invalidatePublicCache(key: string) {
   memoryCache.delete(key);
+
   const cache = await openCache();
-  if (!cache) return;
-  try {
-    await cache.delete(cacheRequest(key));
-  } catch {
-    // local dev or runtime without Cache API
+  if (cache) {
+    try {
+      await cache.delete(cacheRequest(key));
+    } catch {
+      // runtime without Cache API
+    }
+  }
+
+  const kv = await getKv();
+  if (kv) {
+    try {
+      await kv.delete(key);
+    } catch {
+      // ignore, entry will expire
+    }
   }
 }
 

@@ -17,6 +17,12 @@
     "directory": ".open-next/assets",
     "binding": "ASSETS"
   },
+  "kv_namespaces": [
+    {
+      "binding": "PUBLIC_CACHE",
+      "id": "5090150982e745f5a08a36ba26d048f5"
+    }
+  ],
   "services": [
     {
       "binding": "WORKER_SELF_REFERENCE",
