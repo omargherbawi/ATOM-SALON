@@ -128,7 +128,10 @@
     "title": "My Appointments",
     "description": "Your scheduled clients",
     "noAppointments": "You have no appointments yet",
-    "confirmCancel": "Cancel this appointment? The time will become available again."
+    "confirmCancel": "Cancel this appointment? The time will become available again.",
+    "phone": "Phone",
+    "noPending": "No bookings waiting for confirmation",
+    "confirmReject": "Reject this booking? The time will become available again."
   },
   "barbers": {
     "title": "Barbers",
