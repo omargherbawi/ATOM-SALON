@@ -11,6 +11,14 @@ import {
 interface Settings {
   systemTitle: string;
   tagline?: string;
+  slotDuration?: number;
+  payToConfirm?: boolean;
+  requireTransferNumber?: boolean;
+  paymentAmount?: string;
+  paymentCurrency?: string;
+  cliqNumber?: string;
+  cliqBank?: string;
+  allowBarberBreaks?: boolean;
 }
 
 interface SettingsContextValue {
@@ -23,6 +31,14 @@ interface SettingsContextValue {
 const defaultSettings: Settings = {
   systemTitle: 'Atom Salon',
   tagline: 'Premium Barbershop for Men',
+  slotDuration: 30,
+  payToConfirm: false,
+  requireTransferNumber: true,
+  paymentAmount: '1',
+  paymentCurrency: 'JOD',
+  cliqNumber: '00962797598857',
+  cliqBank: 'Arab Banks',
+  allowBarberBreaks: false,
 };
 
 const SettingsContext = createContext<SettingsContextValue | undefined>(

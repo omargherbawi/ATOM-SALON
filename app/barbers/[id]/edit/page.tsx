@@ -6,10 +6,13 @@ import toast from 'react-hot-toast';
 import ProtectedRoute from '../../../protected-route';
 import SidebarLayout from '../../../components/sidebar-layout';
 import WorkingHoursEditor from '../../../components/WorkingHoursEditor';
+import BreaksEditor from '../../../components/BreaksEditor';
 import { useTranslations } from '../../../hooks/useTranslations';
 import {
   defaultWorkingHours,
+  normalizeBreaks,
   resolveWorkingHours,
+  type BarberBreak,
   type WorkingHour,
 } from '@/lib/working-hours';
 
@@ -28,10 +31,13 @@ export default function EditBarberPage() {
     email: '',
     password: '',
     active: true,
+    cliqNumber: '',
+    cliqBank: '',
   });
   const [workingHours, setWorkingHours] = useState<WorkingHour[]>(
     defaultWorkingHours()
   );
+  const [breaks, setBreaks] = useState<BarberBreak[]>([]);
 
   useEffect(() => {
     if (!id) return;
@@ -49,8 +55,11 @@ export default function EditBarberPage() {
           email: data.email || '',
           password: '',
           active: data.active !== false,
+          cliqNumber: data.cliqNumber || '',
+          cliqBank: data.cliqBank || '',
         });
         setWorkingHours(resolveWorkingHours(data.workingHours));
+        setBreaks(normalizeBreaks(data.breaks) ?? []);
       })
       .catch(() => {
         toast.error('Failed to load barber');
@@ -61,6 +70,13 @@ export default function EditBarberPage() {
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
+
+    const validBreaks = normalizeBreaks(breaks);
+    if (!validBreaks) {
+      toast.error(t('breaks.invalid'));
+      return;
+    }
+
     setSaving(true);
 
     try {
@@ -68,7 +84,10 @@ export default function EditBarberPage() {
         name: form.name,
         email: form.email,
         active: form.active,
+        cliqNumber: form.cliqNumber.trim(),
+        cliqBank: form.cliqBank.trim(),
         workingHours,
+        breaks: validBreaks,
       };
       if (form.password.trim()) {
         payload.password = form.password;
@@ -154,10 +173,50 @@ export default function EditBarberPage() {
               </p>
             </div>
 
+            <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4 space-y-4">
+              <div>
+                <p className="text-sm font-medium text-zinc-300">
+                  {t('barbers.paymentDetails')}
+                </p>
+                <p className="text-xs text-zinc-500 mt-1">
+                  {t('barbers.paymentDetailsHint')}
+                </p>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+                    {t('barbers.cliqNumber')}
+                  </label>
+                  <input
+                    type="text"
+                    dir="ltr"
+                    value={form.cliqNumber}
+                    onChange={(e) =>
+                      setForm({ ...form, cliqNumber: e.target.value })
+                    }
+                    className={fieldClass}
+                  />
+                </div>
+                <div>
+                  <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+                    {t('barbers.cliqBank')}
+                  </label>
+                  <input
+                    type="text"
+                    value={form.cliqBank}
+                    onChange={(e) => setForm({ ...form, cliqBank: e.target.value })}
+                    className={fieldClass}
+                  />
+                </div>
+              </div>
+            </div>
+
             <WorkingHoursEditor
               value={workingHours}
               onChange={setWorkingHours}
             />
+
+            <BreaksEditor value={breaks} onChange={setBreaks} />
 
             <div className="flex gap-3 pt-2">
               <button

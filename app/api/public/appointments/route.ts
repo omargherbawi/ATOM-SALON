@@ -5,9 +5,11 @@ import Appointment from '@/models/Appointment';
 import Customer from '@/models/Customer';
 import {
   ACTIVE_BOOKING_STATUSES,
+  filterBreakSlots,
   filterPastSlots,
   getWorkingSlotsForDate,
 } from '@/lib/working-hours';
+import { getPublicSettings } from '@/lib/public-data';
 import {
   createGuestToken,
   normalizePhone,
@@ -21,7 +23,7 @@ export const runtime = 'nodejs';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { customerName, customerPhone, date, time, barberId, guestToken } =
+    const { customerName, customerPhone, date, time, barberId, guestToken, transferNumber } =
       body;
 
     if (!customerName?.trim()) {
@@ -47,24 +49,47 @@ export async function POST(request: NextRequest) {
 
     await dbConnect();
 
-    const barber = await User.findOne({
-      _id: barberId,
-      role: 'barber',
-      active: true,
-    }).select('name workingHours');
+    const [barber, settings] = await Promise.all([
+      User.findOne({
+        _id: barberId,
+        role: 'barber',
+        active: true,
+      }).select('name workingHours breaks'),
+      getPublicSettings(),
+    ]);
 
     if (!barber) {
       return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
     }
 
-    const openSlots = filterPastSlots(
+    if (
+      settings.payToConfirm &&
+      settings.requireTransferNumber !== false &&
+      !transferNumber?.trim()
+    ) {
+      return NextResponse.json(
+        { error: 'Transfer number is required' },
+        { status: 400 }
+      );
+    }
+
+    const slotDuration = settings.slotDuration || 30;
+
+    const workingSlots = filterPastSlots(
       date,
-      getWorkingSlotsForDate(barber.workingHours, date)
+      getWorkingSlotsForDate(barber.workingHours, date, slotDuration)
     );
 
-    if (!openSlots.includes(time)) {
+    if (!workingSlots.includes(time)) {
       return NextResponse.json(
         { error: 'This time is outside the barber working hours' },
+        { status: 400 }
+      );
+    }
+
+    if (!filterBreakSlots(barber.breaks, date, [time], slotDuration).length) {
+      return NextResponse.json(
+        { error: 'The barber is on a break at this time' },
         { status: 400 }
       );
     }
@@ -102,6 +127,8 @@ export async function POST(request: NextRequest) {
       });
     }
 
+    const appointmentStatus = settings.payToConfirm ? 'pending' : 'scheduled';
+
     const appointment = await Appointment.create({
       customerName: customerName.trim(),
       customerPhone: phone,
@@ -110,12 +137,15 @@ export async function POST(request: NextRequest) {
       time,
       barberId,
       barberName: barber.name,
-      status: 'scheduled',
+      status: appointmentStatus,
+      transferNumber: transferNumber?.trim() || undefined,
     });
     await invalidateAvailabilityCache(barberId, date);
 
     const response = NextResponse.json({
-      message: 'Appointment booked successfully',
+      message: settings.payToConfirm
+        ? 'Appointment submitted for review'
+        : 'Appointment booked successfully',
       guestToken: token,
       data: appointment,
     });

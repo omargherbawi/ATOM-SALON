@@ -5,7 +5,8 @@ import toast from 'react-hot-toast';
 import ProtectedRoute from '../protected-route';
 import SidebarLayout from '../components/sidebar-layout';
 import { useTranslations } from '../hooks/useTranslations';
-import { isActiveBooking } from '@/lib/working-hours';
+import { useSettings } from '../contexts/SettingsContext';
+import { isActiveBooking, formatSlotLabel } from '@/lib/working-hours';
 
 interface Appointment {
   _id: string;
@@ -16,7 +17,8 @@ interface Appointment {
 }
 
 export default function MyAppointmentsPage() {
-  const { t } = useTranslations();
+  const { t, language } = useTranslations();
+  const { settings } = useSettings();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -89,7 +91,7 @@ export default function MyAppointmentsPage() {
                     {appt.customerName}
                   </p>
                   <p className="text-sm text-zinc-400 mt-1">
-                    {appt.date} · {appt.time}
+                    {appt.date} · {formatSlotLabel(appt.time, settings.slotDuration || 30, language)}
                   </p>
                 </div>
                 <div className="flex items-center gap-3">

@@ -35,6 +35,8 @@ function serializeBarber(doc: Record<string, unknown>) {
     active: doc.active,
     department: doc.department ?? undefined,
     workingHours: doc.workingHours ?? [],
+    cliqNumber: doc.cliqNumber ?? '',
+    cliqBank: doc.cliqBank ?? '',
     createdAt: doc.createdAt,
     updatedAt: doc.updatedAt,
   };
@@ -78,7 +80,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json();
-    const { name, email, password, workingHours } = body;
+    const { name, email, password, workingHours, cliqNumber, cliqBank } = body;
 
     if (!name?.trim()) {
       return NextResponse.json({ error: 'Name is required' }, { status: 400 });
@@ -122,6 +124,8 @@ export async function POST(request: NextRequest) {
       role: 'barber',
       active: true,
       workingHours: hours,
+      cliqNumber: typeof cliqNumber === 'string' ? cliqNumber.trim() : '',
+      cliqBank: typeof cliqBank === 'string' ? cliqBank.trim() : '',
       createdAt: now,
       updatedAt: now,
     };

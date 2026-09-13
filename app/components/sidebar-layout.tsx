@@ -5,14 +5,16 @@ import { usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
 import {
   Calendar,
+  CalendarOff,
   LayoutDashboard,
   LogOut,
   Menu,
   Scissors,
+  Settings,
   Users,
   X,
 } from 'lucide-react';
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslations } from '../hooks/useTranslations';
 import { useSettings } from '../contexts/SettingsContext';
 import LanguageSwitcher from './LanguageSwitcher';
@@ -23,6 +25,7 @@ interface NavItem {
   icon: React.ComponentType<{ className?: string }>;
   roles: string[];
   staffPermission?: string;
+  hidden?: boolean;
 }
 
 export default function SidebarLayout({
@@ -44,6 +47,23 @@ export default function SidebarLayout({
 
   const role = session?.user?.role || '';
 
+  // Public settings are cached for minutes, so ask the server directly; the
+  // link then appears as soon as the admin enables barber breaks.
+  const [barberBreaksEnabled, setBarberBreaksEnabled] = useState(false);
+  useEffect(() => {
+    if (role !== 'barber') return;
+    let cancelled = false;
+    fetch('/api/barbers/me/breaks', { cache: 'no-store' })
+      .then((res) => (res.ok ? res.json() : null))
+      .then((data) => {
+        if (!cancelled) setBarberBreaksEnabled(Boolean(data?.enabled));
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, [role]);
+
   const navigation: NavItem[] = [
     {
       name: t('navigation.dashboard'),
@@ -64,14 +84,29 @@ export default function SidebarLayout({
       roles: ['admin'],
     },
     {
+      name: t('navigation.settings'),
+      href: '/settings',
+      icon: Settings,
+      roles: ['admin'],
+    },
+    {
       name: t('navigation.myAppointments'),
       href: '/my-appointments',
       icon: Scissors,
       roles: ['barber'],
     },
+    {
+      name: t('navigation.myBreaks'),
+      href: '/my-breaks',
+      icon: CalendarOff,
+      roles: ['barber'],
+      hidden: !barberBreaksEnabled,
+    },
   ];
 
-  const filteredNav = navigation.filter((item) => item.roles.includes(role));
+  const filteredNav = navigation.filter(
+    (item) => item.roles.includes(role) && !item.hidden
+  );
 
   const NavLinks = () => (
     <>

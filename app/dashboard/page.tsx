@@ -5,7 +5,8 @@ import { Calendar, Scissors, Users } from 'lucide-react';
 import ProtectedRoute from '../protected-route';
 import SidebarLayout from '../components/sidebar-layout';
 import { useTranslations } from '../hooks/useTranslations';
-import { isActiveBooking } from '@/lib/working-hours';
+import { useSettings } from '../contexts/SettingsContext';
+import { isActiveBooking, formatSlotLabel } from '@/lib/working-hours';
 
 interface Stats {
   totalAppointments: number;
@@ -22,7 +23,8 @@ interface Stats {
 }
 
 export default function DashboardPage() {
-  const { t } = useTranslations();
+  const { t, language } = useTranslations();
+  const { settings } = useSettings();
   const [stats, setStats] = useState<Stats>({
     totalAppointments: 0,
     todayAppointments: 0,
@@ -148,7 +150,9 @@ export default function DashboardPage() {
                           <td className="px-5 py-3">{appt.customerName}</td>
                           <td className="px-5 py-3">{appt.barberName}</td>
                           <td className="px-5 py-3">{appt.date}</td>
-                          <td className="px-5 py-3">{appt.time}</td>
+                          <td className="px-5 py-3">
+                            {formatSlotLabel(appt.time, settings.slotDuration || 30, language)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>

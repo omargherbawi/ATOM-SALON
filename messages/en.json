@@ -18,7 +18,9 @@
     "dashboard": "Dashboard",
     "appointments": "Appointments",
     "barbers": "Barbers",
-    "myAppointments": "My Appointments"
+    "settings": "Settings",
+    "myAppointments": "My Appointments",
+    "myBreaks": "My Breaks"
   },
   "booking": {
     "title": "Book Your Appointment",
@@ -45,7 +47,17 @@
     "cancelConfirm": "Cancel this appointment? The time will become available again.",
     "cancelled": "Appointment cancelled",
     "bookAnother": "Book another appointment",
-    "backToAppointments": "Back to my appointment"
+    "pendingReview": "Pending Review",
+    "pendingNotice": "Your appointment is pending payment review from staff.",
+    "paymentStepTitle": "Payment Required to Confirm",
+    "paymentStepSubtitle": "Please transfer the payment via CliQ to submit your booking",
+    "payAmount": "Please pay {amount} {currency} on CliQ to confirm appointment",
+    "cliqNumber": "CliQ Number",
+    "cliqBank": "Bank Name",
+    "transferNumber": "Transfer Number",
+    "transferNumberPlaceholder": "Enter transfer / transaction number",
+    "confirmBooking": "Confirm & Submit Booking",
+    "transferNumberRequired": "Please enter your transfer number"
   },
   "workingHours": {
     "title": "Working hours",
@@ -61,6 +73,17 @@
       "friday": "Friday",
       "saturday": "Saturday"
     }
+  },
+  "breaks": {
+    "title": "Breaks",
+    "hint": "Block out a date and time when this barber is on a break. Customers cannot book any slot that overlaps a break.",
+    "date": "Date",
+    "from": "From",
+    "to": "To",
+    "add": "Add break",
+    "remove": "Remove",
+    "empty": "No breaks scheduled",
+    "invalid": "Each break needs a date, and the end time must be after the start time"
   },
   "login": {
     "title": "Staff Login",
@@ -88,12 +111,17 @@
     "time": "Time",
     "noAppointments": "No appointments found",
     "scheduled": "Scheduled",
+    "pending": "Pending Review",
     "completed": "Completed",
     "cancelled": "Cancelled",
+    "confirmPayment": "Confirm",
+    "reject": "Reject",
     "markCompleted": "Mark Completed",
     "markCancelled": "Cancel",
     "today": "Today",
     "all": "All",
+    "pendingTab": "Pending Review",
+    "transferNumber": "Transfer #",
     "noAppointmentsToday": "No appointments today"
   },
   "myAppointments": {
@@ -119,6 +147,52 @@
     "updated": "Barber updated successfully",
     "deleted": "Barber deleted",
     "confirmDelete": "Delete this barber? Their scheduled appointments will be cancelled.",
-    "passwordHint": "Leave blank to keep the current password"
+    "passwordHint": "Leave blank to keep the current password",
+    "paymentDetails": "CliQ Payment Details",
+    "paymentDetailsHint": "Customers booking with this barber pay to these details. Leave empty to use the salon's CliQ details from Settings.",
+    "cliqNumber": "CliQ Number",
+    "cliqBank": "Bank Name"
+  },
+  "settings": {
+    "title": "System Settings",
+    "description": "Configure salon details and slot duration",
+    "general": "General Information",
+    "systemTitle": "Salon Name",
+    "systemTitlePlaceholder": "e.g. Atom Salon",
+    "tagline": "Tagline / Subtitle",
+    "taglinePlaceholder": "e.g. Premium Barbershop for Men",
+    "bookingSettings": "Booking & Slot Configuration",
+    "slotDuration": "Appointment Slot Duration",
+    "slotDurationHint": "Select the duration in minutes for each appointment slot. Customer booking slots will align to this interval.",
+    "customDuration": "Custom duration (minutes)",
+    "minutes": "min",
+    "previewTitle": "Live Slot Preview",
+    "previewHint": "For a standard 09:00 - 18:00 working day, slots will appear as:",
+    "paymentSettings": "Pay to Confirm (CliQ)",
+    "payToConfirm": "Require Pay-to-Confirm",
+    "payToConfirmHint": "When enabled, customers must pay via CliQ and provide a transfer number to request a booking.",
+    "requireTransferNumber": "Require Transfer Number Field",
+    "requireTransferNumberHint": "If enabled, customer must input a transfer number. If disabled, payment details are shown without asking for a transfer number.",
+    "paymentAmount": "Payment Amount",
+    "paymentCurrency": "Currency",
+    "cliqNumber": "CliQ Number",
+    "cliqBank": "Bank Name",
+    "save": "Save Settings",
+    "saving": "Saving...",
+    "saved": "Settings saved successfully",
+    "saveError": "Failed to save settings",
+    "barberSettings": "Barber Permissions",
+    "allowBarberBreaks": "Let barbers add their own breaks",
+    "allowBarberBreaksHint": "When enabled, barbers get a My Breaks page where they can block out a date and time when they are on a break. Customers cannot book any slot that overlaps a break."
+  },
+  "myBreaks": {
+    "title": "My Breaks",
+    "description": "Block out times when you are not available",
+    "hint": "Block out a date and time when you are on a break. Customers cannot book any slot that overlaps a break.",
+    "disabled": "Adding breaks is turned off by the salon admin.",
+    "save": "Save breaks",
+    "saving": "Saving...",
+    "saved": "Breaks saved",
+    "saveError": "Failed to save breaks"
   }
 }

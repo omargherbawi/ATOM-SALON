@@ -10,7 +10,8 @@ export interface IAppointment {
   barberId: string;
   barberName: string;
   department?: string;
-  status: 'scheduled' | 'cancelled' | 'completed';
+  status: 'pending' | 'scheduled' | 'cancelled' | 'completed';
+  transferNumber?: string;
   notes?: string;
   createdAt: Date;
   updatedAt: Date;
@@ -28,9 +29,10 @@ const appointmentSchema = new mongoose.Schema<IAppointment>(
     department: { type: String, trim: true },
     status: {
       type: String,
-      enum: ['scheduled', 'cancelled', 'completed'],
+      enum: ['pending', 'scheduled', 'cancelled', 'completed'],
       default: 'scheduled',
     },
+    transferNumber: { type: String, trim: true },
     notes: { type: String, trim: true },
   },
   { timestamps: true }
@@ -43,7 +45,7 @@ appointmentSchema.index(
   { barberId: 1, date: 1, time: 1 },
   {
     unique: true,
-    partialFilterExpression: { status: 'scheduled' },
+    partialFilterExpression: { status: { $in: ['scheduled', 'pending'] } },
     name: 'unique_scheduled_slot',
   }
 );

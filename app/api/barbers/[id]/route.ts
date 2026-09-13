@@ -5,8 +5,11 @@ import { authOptions } from '../../auth/[...nextauth]/route';
 import dbConnect from '@/lib/mongodb';
 import User from '@/models/User';
 import Appointment from '@/models/Appointment';
-import { normalizeWorkingHours } from '@/lib/working-hours';
-import { invalidateBarberCaches } from '@/lib/public-cache';
+import { normalizeBreaks, normalizeWorkingHours } from '@/lib/working-hours';
+import {
+  invalidateAvailabilityCache,
+  invalidateBarberCaches,
+} from '@/lib/public-cache';
 
 export const runtime = 'nodejs';
 
@@ -81,6 +84,12 @@ export async function PUT(
       barber.email = email;
     }
     if (typeof body.active === 'boolean') barber.active = body.active;
+    if (typeof body.cliqNumber === 'string') {
+      barber.cliqNumber = body.cliqNumber.trim();
+    }
+    if (typeof body.cliqBank === 'string') {
+      barber.cliqBank = body.cliqBank.trim();
+    }
     if (body.password && body.password.length >= 6) {
       barber.password = await bcrypt.hash(body.password, 12);
     }
@@ -94,9 +103,24 @@ export async function PUT(
       }
       barber.workingHours = hours;
     }
+    // Working hours affect every date, breaks only the dates they touch.
+    const staleDates = new Set<string>();
+    if (body.breaks !== undefined) {
+      const breaks = normalizeBreaks(body.breaks);
+      if (!breaks) {
+        return NextResponse.json({ error: 'Invalid breaks' }, { status: 400 });
+      }
+      for (const item of [...(barber.breaks ?? []), ...breaks]) {
+        staleDates.add(item.date);
+      }
+      barber.breaks = breaks;
+    }
 
     await barber.save();
     await invalidateBarberCaches();
+    await Promise.all(
+      [...staleDates].map((date) => invalidateAvailabilityCache(id, date))
+    );
 
     const result = barber.toObject();
     delete result.password;

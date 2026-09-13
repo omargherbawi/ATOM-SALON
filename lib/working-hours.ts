@@ -15,7 +15,7 @@ export const WEEKDAY_KEYS = [
   'saturday',
 ] as const;
 
-export const ACTIVE_BOOKING_STATUSES = ['scheduled', 'scheduled'] as const;
+export const ACTIVE_BOOKING_STATUSES = ['scheduled', 'pending'] as const;
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
 
@@ -65,12 +65,39 @@ export function generateTimeSlots(
   const startMins = timeToMinutes(start);
   const endMins = timeToMinutes(end);
   const slots: string[] = [];
+  const step = Math.max(5, stepMinutes);
 
-  for (let mins = startMins; mins < endMins; mins += stepMinutes) {
+  for (let mins = startMins; mins + step <= endMins; mins += step) {
     slots.push(minutesToTime(mins));
   }
 
   return slots;
+}
+
+export function formatTime12h(timeStr: string, language = 'en'): string {
+  const [hoursStr, minutesStr] = timeStr.split(':');
+  let hours = parseInt(hoursStr, 10);
+  if (isNaN(hours)) return timeStr;
+  const isPm = hours >= 12;
+  hours = hours % 12;
+  if (hours === 0) hours = 12;
+  if (language === 'ar') {
+    // Wrap in an RTL isolate so the browser doesn't reorder digits and suffix.
+    return `⁧${hours}:${minutesStr} ${isPm ? 'م' : 'ص'}⁩`;
+  }
+  return `${hours}:${minutesStr} ${isPm ? 'PM' : 'AM'}`;
+}
+
+export function formatSlotLabel(
+  startTime: string,
+  durationMinutes = 30,
+  language = 'en'
+): string {
+  const startMins = timeToMinutes(startTime);
+  const endMins = startMins + durationMinutes;
+  const start12 = formatTime12h(startTime, language);
+  const end12 = formatTime12h(minutesToTime(endMins), language);
+  return `${start12} - ${end12}`;
 }
 
 export function normalizeWorkingHours(
@@ -110,13 +137,14 @@ export function resolveWorkingHours(
 
 export function getWorkingSlotsForDate(
   hours: WorkingHour[] | null | undefined,
-  dateStr: string
+  dateStr: string,
+  stepMinutes = 30
 ): string[] {
   const resolved = resolveWorkingHours(hours);
   const day = getDayOfWeek(dateStr);
   const row = resolved.find((item) => item.day === day);
   if (!row?.enabled) return [];
-  return generateTimeSlots(row.start, row.end);
+  return generateTimeSlots(row.start, row.end, stepMinutes);
 }
 
 export function filterPastSlots(
@@ -133,5 +161,58 @@ export function filterPastSlots(
 }
 
 export function isActiveBooking(status: string): boolean {
-  return status === 'scheduled' || status === 'scheduled';
+  return status === 'scheduled' || status === 'pending';
+}
+
+export type BarberBreak = {
+  date: string;
+  start: string;
+  end: string;
+};
+
+const DATE_PATTERN = /^\d{4}-(0[1-9]|1[0-2])-(0[1-9]|[12]\d|3[01])$/;
+
+export function normalizeBreaks(input: unknown): BarberBreak[] | null {
+  if (!Array.isArray(input)) return null;
+
+  const breaks: BarberBreak[] = [];
+
+  for (const row of input) {
+    if (!row || typeof row !== 'object') return null;
+    const date = String((row as BarberBreak).date || '').trim();
+    const start = normalizeTime(String((row as BarberBreak).start || ''));
+    const end = normalizeTime(String((row as BarberBreak).end || ''));
+
+    if (!DATE_PATTERN.test(date) || !start || !end) return null;
+    if (timeToMinutes(start) >= timeToMinutes(end)) return null;
+
+    breaks.push({ date, start, end });
+  }
+
+  return breaks.sort((a, b) =>
+    a.date === b.date ? a.start.localeCompare(b.start) : a.date.localeCompare(b.date)
+  );
+}
+
+/** Drops every slot whose window overlaps a break on that date. */
+export function filterBreakSlots(
+  breaks: BarberBreak[] | null | undefined,
+  dateStr: string,
+  slots: string[],
+  slotDurationMinutes = 30
+): string[] {
+  const dayBreaks = (breaks ?? []).filter((item) => item.date === dateStr);
+  if (dayBreaks.length === 0) return slots;
+
+  const duration = Math.max(5, slotDurationMinutes);
+
+  return slots.filter((slot) => {
+    const slotStart = timeToMinutes(slot);
+    const slotEnd = slotStart + duration;
+    return !dayBreaks.some(
+      (item) =>
+        slotStart < timeToMinutes(item.end) &&
+        slotEnd > timeToMinutes(item.start)
+    );
+  });
 }

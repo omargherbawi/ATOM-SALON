@@ -16,7 +16,13 @@ export default function NewBarberPage() {
   const { t } = useTranslations();
   const router = useRouter();
   const [saving, setSaving] = useState(false);
-  const [form, setForm] = useState({ name: '', email: '', password: '' });
+  const [form, setForm] = useState({
+    name: '',
+    email: '',
+    password: '',
+    cliqNumber: '',
+    cliqBank: '',
+  });
   const [workingHours, setWorkingHours] = useState<WorkingHour[]>(
     defaultWorkingHours()
   );
@@ -95,6 +101,44 @@ export default function NewBarberPage() {
               minLength={6}
               className={fieldClass}
             />
+          </div>
+
+          <div className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-4 space-y-4">
+            <div>
+              <p className="text-sm font-medium text-zinc-300">
+                {t('barbers.paymentDetails')}
+              </p>
+              <p className="text-xs text-zinc-500 mt-1">
+                {t('barbers.paymentDetailsHint')}
+              </p>
+            </div>
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+                  {t('barbers.cliqNumber')}
+                </label>
+                <input
+                  type="text"
+                  dir="ltr"
+                  value={form.cliqNumber}
+                  onChange={(e) =>
+                    setForm({ ...form, cliqNumber: e.target.value })
+                  }
+                  className={fieldClass}
+                />
+              </div>
+              <div>
+                <label className="block text-sm font-medium text-zinc-300 mb-1.5">
+                  {t('barbers.cliqBank')}
+                </label>
+                <input
+                  type="text"
+                  value={form.cliqBank}
+                  onChange={(e) => setForm({ ...form, cliqBank: e.target.value })}
+                  className={fieldClass}
+                />
+              </div>
+            </div>
           </div>
 
           <WorkingHoursEditor value={workingHours} onChange={setWorkingHours} />

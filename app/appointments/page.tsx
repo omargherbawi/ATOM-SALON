@@ -5,7 +5,12 @@ import toast from 'react-hot-toast';
 import ProtectedRoute from '../protected-route';
 import SidebarLayout from '../components/sidebar-layout';
 import { useTranslations } from '../hooks/useTranslations';
-import { isActiveBooking, localDateString } from '@/lib/working-hours';
+import { useSettings } from '../contexts/SettingsContext';
+import {
+  isActiveBooking,
+  localDateString,
+  formatSlotLabel,
+} from '@/lib/working-hours';
 
 interface Appointment {
   _id: string;
@@ -15,18 +20,26 @@ interface Appointment {
   date: string;
   time: string;
   status: string;
+  transferNumber?: string;
 }
 
 export default function AppointmentsPage() {
-  const { t } = useTranslations();
+  const { t, language } = useTranslations();
+  const { settings } = useSettings();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'today'>('today');
+  const [filter, setFilter] = useState<'all' | 'today' | 'pending'>('today');
 
   const today = localDateString();
+  const pendingCount = useMemo(
+    () => appointments.filter((a) => a.status === 'pending').length,
+    [appointments]
+  );
+
   const visibleAppointments = useMemo(() => {
-    if (filter !== 'today') return appointments;
-    return appointments.filter((appt) => appt.date === today);
+    if (filter === 'pending') return appointments.filter((a) => a.status === 'pending');
+    if (filter === 'today') return appointments.filter((appt) => appt.date === today);
+    return appointments;
   }, [appointments, filter, today]);
 
   const loadAppointments = () => {
@@ -59,6 +72,7 @@ export default function AppointmentsPage() {
 
   const statusBadge = (status: string) => {
     const styles: Record<string, string> = {
+      pending: 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30',
       scheduled: 'bg-amber-500/20 text-amber-300',
       completed: 'bg-green-500/20 text-green-400',
       cancelled: 'bg-red-500/20 text-red-400',
@@ -89,6 +103,24 @@ export default function AppointmentsPage() {
             }`}
           >
             {t('appointments.today')}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('pending')}
+            className={`min-h-11 rounded-lg px-4 text-sm font-medium transition-colors flex items-center gap-1.5 ${
+              filter === 'pending'
+                ? 'bg-amber-500 text-black'
+                : 'border border-zinc-700 text-zinc-300 hover:bg-zinc-800'
+            }`}
+          >
+            <span>{t('appointments.pendingTab')}</span>
+            {pendingCount > 0 && (
+              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                filter === 'pending' ? 'bg-black text-amber-400' : 'bg-amber-500/20 text-amber-300'
+              }`}>
+                {pendingCount}
+              </span>
+            )}
           </button>
           <button
             type="button"
@@ -135,6 +167,9 @@ export default function AppointmentsPage() {
                       {t('appointments.time')}
                     </th>
                     <th className="text-start px-4 py-3 font-medium">
+                      {t('appointments.transferNumber')}
+                    </th>
+                    <th className="text-start px-4 py-3 font-medium">
                       {t('common.status')}
                     </th>
                     <th className="text-start px-4 py-3 font-medium">
@@ -148,35 +183,53 @@ export default function AppointmentsPage() {
                       key={appt._id}
                       className="border-b border-zinc-800/50 hover:bg-zinc-800/30"
                     >
-                      <td className="px-4 py-3">{appt.customerName}</td>
+                      <td className="px-4 py-3 font-medium text-zinc-200">{appt.customerName}</td>
                       <td className="px-4 py-3">{appt.customerPhone || '—'}</td>
                       <td className="px-4 py-3">{appt.barberName}</td>
                       <td className="px-4 py-3">{appt.date}</td>
-                      <td className="px-4 py-3">{appt.time}</td>
+                      <td className="px-4 py-3">
+                        {formatSlotLabel(appt.time, settings.slotDuration || 30, language)}
+                      </td>
+                      <td className="px-4 py-3 font-mono text-amber-300 text-xs">
+                        {appt.transferNumber || '—'}
+                      </td>
                       <td className="px-4 py-3">{statusBadge(appt.status)}</td>
                       <td className="px-4 py-3">
-                        {isActiveBooking(appt.status) && (
+                        {appt.status === 'pending' ? (
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"
-                              onClick={() =>
-                                updateStatus(appt._id, 'completed')
-                              }
+                              onClick={() => updateStatus(appt._id, 'scheduled')}
+                              className="rounded px-2.5 py-1 text-xs font-semibold bg-green-500/20 text-green-300 hover:bg-green-500/30 border border-green-500/40 transition-colors"
+                            >
+                              {t('appointments.confirmPayment')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateStatus(appt._id, 'cancelled')}
+                              className="rounded px-2.5 py-1 text-xs font-semibold bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/40 transition-colors"
+                            >
+                              {t('appointments.reject')}
+                            </button>
+                          </div>
+                        ) : appt.status === 'scheduled' ? (
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => updateStatus(appt._id, 'completed')}
                               className="text-xs text-green-400 hover:text-green-300"
                             >
                               {t('appointments.markCompleted')}
                             </button>
                             <button
                               type="button"
-                              onClick={() =>
-                                updateStatus(appt._id, 'cancelled')
-                              }
+                              onClick={() => updateStatus(appt._id, 'cancelled')}
                               className="text-xs text-red-400 hover:text-red-300"
                             >
                               {t('appointments.markCancelled')}
                             </button>
                           </div>
-                        )}
+                        ) : null}
                       </td>
                     </tr>
                   ))}

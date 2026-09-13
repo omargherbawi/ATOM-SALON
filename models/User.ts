@@ -7,6 +7,12 @@ export interface IWorkingHours {
   end: string;
 }
 
+export interface IBreak {
+  date: string;
+  start: string;
+  end: string;
+}
+
 export interface IUser {
   _id: string;
   name: string;
@@ -17,6 +23,9 @@ export interface IUser {
   staffTypeId?: string;
   active: boolean;
   workingHours: IWorkingHours[];
+  breaks: IBreak[];
+  cliqNumber?: string;
+  cliqBank?: string;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -27,6 +36,15 @@ const workingHoursSchema = new mongoose.Schema(
     enabled: { type: Boolean, default: false },
     start: { type: String, default: '09:00' },
     end: { type: String, default: '18:00' },
+  },
+  { _id: false }
+);
+
+const breakSchema = new mongoose.Schema(
+  {
+    date: { type: String, required: true },
+    start: { type: String, required: true },
+    end: { type: String, required: true },
   },
   { _id: false }
 );
@@ -51,6 +69,9 @@ const userSchema = new mongoose.Schema<IUser>(
     staffTypeId: { type: String },
     active: { type: Boolean, default: true },
     workingHours: { type: [workingHoursSchema], default: [] },
+    breaks: { type: [breakSchema], default: [] },
+    cliqNumber: { type: String, trim: true, default: '' },
+    cliqBank: { type: String, trim: true, default: '' },
   },
   { timestamps: true }
 );
