@@ -10,7 +10,7 @@ export interface IAppointment {
   barberId: string;
   barberName: string;
   department?: string;
-  status: 'pending' | 'scheduled' | 'cancelled' | 'completed';
+  status: 'unconfirmed' | 'pending' | 'scheduled' | 'cancelled' | 'completed';
   transferNumber?: string;
   notes?: string;
   createdAt: Date;
@@ -29,7 +29,7 @@ const appointmentSchema = new mongoose.Schema<IAppointment>(
     department: { type: String, trim: true },
     status: {
       type: String,
-      enum: ['pending', 'scheduled', 'cancelled', 'completed'],
+      enum: ['unconfirmed', 'pending', 'scheduled', 'cancelled', 'completed'],
       default: 'scheduled',
     },
     transferNumber: { type: String, trim: true },
@@ -41,6 +41,8 @@ const appointmentSchema = new mongoose.Schema<IAppointment>(
 appointmentSchema.index({ date: 1, time: 1, barberId: 1 });
 appointmentSchema.index({ department: 1 });
 appointmentSchema.index({ customerId: 1, status: 1 });
+// `unconfirmed` is deliberately left out: several customers may hold an unpaid
+// booking on the same time, and the first one to pay wins the slot.
 appointmentSchema.index(
   { barberId: 1, date: 1, time: 1 },
   {

@@ -28,16 +28,25 @@ export default function AppointmentsPage() {
   const { settings } = useSettings();
   const [appointments, setAppointments] = useState<Appointment[]>([]);
   const [loading, setLoading] = useState(true);
-  const [filter, setFilter] = useState<'all' | 'today' | 'pending'>('today');
+  const [filter, setFilter] = useState<
+    'all' | 'today' | 'pending' | 'unconfirmed'
+  >('today');
 
   const today = localDateString();
   const pendingCount = useMemo(
     () => appointments.filter((a) => a.status === 'pending').length,
     [appointments]
   );
+  const unconfirmedCount = useMemo(
+    () => appointments.filter((a) => a.status === 'unconfirmed').length,
+    [appointments]
+  );
 
   const visibleAppointments = useMemo(() => {
     if (filter === 'pending') return appointments.filter((a) => a.status === 'pending');
+    if (filter === 'unconfirmed') {
+      return appointments.filter((a) => a.status === 'unconfirmed');
+    }
     if (filter === 'today') return appointments.filter((appt) => appt.date === today);
     return appointments;
   }, [appointments, filter, today]);
@@ -65,13 +74,21 @@ export default function AppointmentsPage() {
     if (res.ok) {
       toast.success('Updated');
       loadAppointments();
-    } else {
-      toast.error('Failed to update');
+      return;
     }
+
+    if (res.status === 409) {
+      toast.error(t('appointments.slotTaken'));
+      loadAppointments();
+      return;
+    }
+
+    toast.error('Failed to update');
   };
 
   const statusBadge = (status: string) => {
     const styles: Record<string, string> = {
+      unconfirmed: 'bg-zinc-500/20 text-zinc-300 border border-zinc-500/40',
       pending: 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30',
       scheduled: 'bg-amber-500/20 text-amber-300',
       completed: 'bg-green-500/20 text-green-400',
@@ -119,6 +136,24 @@ export default function AppointmentsPage() {
                 filter === 'pending' ? 'bg-black text-amber-400' : 'bg-amber-500/20 text-amber-300'
               }`}>
                 {pendingCount}
+              </span>
+            )}
+          </button>
+          <button
+            type="button"
+            onClick={() => setFilter('unconfirmed')}
+            className={`min-h-11 rounded-lg px-4 text-sm font-medium transition-colors flex items-center gap-1.5 ${
+              filter === 'unconfirmed'
+                ? 'bg-amber-500 text-black'
+                : 'border border-zinc-700 text-zinc-300 hover:bg-zinc-800'
+            }`}
+          >
+            <span>{t('appointments.unconfirmedTab')}</span>
+            {unconfirmedCount > 0 && (
+              <span className={`rounded-full px-2 py-0.5 text-xs font-bold ${
+                filter === 'unconfirmed' ? 'bg-black text-amber-400' : 'bg-zinc-700 text-zinc-200'
+              }`}>
+                {unconfirmedCount}
               </span>
             )}
           </button>
@@ -195,7 +230,24 @@ export default function AppointmentsPage() {
                       </td>
                       <td className="px-4 py-3">{statusBadge(appt.status)}</td>
                       <td className="px-4 py-3">
-                        {appt.status === 'pending' ? (
+                        {appt.status === 'unconfirmed' ? (
+                          <div className="flex flex-wrap gap-2">
+                            <button
+                              type="button"
+                              onClick={() => updateStatus(appt._id, 'scheduled')}
+                              className="rounded px-2.5 py-1 text-xs font-semibold bg-green-500/20 text-green-300 hover:bg-green-500/30 border border-green-500/40 transition-colors"
+                            >
+                              {t('appointments.confirmManually')}
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => updateStatus(appt._id, 'cancelled')}
+                              className="rounded px-2.5 py-1 text-xs font-semibold bg-red-500/20 text-red-300 hover:bg-red-500/30 border border-red-500/40 transition-colors"
+                            >
+                              {t('appointments.reject')}
+                            </button>
+                          </div>
+                        ) : appt.status === 'pending' ? (
                           <div className="flex flex-wrap gap-2">
                             <button
                               type="button"

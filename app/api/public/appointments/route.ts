@@ -8,7 +8,9 @@ import {
   filterBreakSlots,
   filterPastSlots,
   getWorkingSlotsForDate,
+  holdsSlot,
 } from '@/lib/working-hours';
+import { isDuplicateSlotError } from '@/lib/appointment-errors';
 import { getPublicSettings } from '@/lib/public-data';
 import {
   createGuestToken,
@@ -23,7 +25,7 @@ export const runtime = 'nodejs';
 export async function POST(request: NextRequest) {
   try {
     const body = await request.json();
-    const { customerName, customerPhone, date, time, barberId, guestToken, transferNumber } =
+    const { customerName, customerPhone, date, time, barberId, guestToken } =
       body;
 
     if (!customerName?.trim()) {
@@ -60,17 +62,6 @@ export async function POST(request: NextRequest) {
 
     if (!barber) {
       return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
-    }
-
-    if (
-      settings.payToConfirm &&
-      settings.requireTransferNumber !== false &&
-      !transferNumber?.trim()
-    ) {
-      return NextResponse.json(
-        { error: 'Transfer number is required' },
-        { status: 400 }
-      );
     }
 
     const slotDuration = settings.slotDuration || 30;
@@ -127,24 +118,41 @@ export async function POST(request: NextRequest) {
       });
     }
 
-    const appointmentStatus = settings.payToConfirm ? 'pending' : 'scheduled';
+    // With pay-to-confirm on, the booking is accepted right away but stays
+    // unconfirmed - and unconfirmed bookings do not reserve the slot.
+    const appointmentStatus = settings.payToConfirm
+      ? 'unconfirmed'
+      : 'scheduled';
 
-    const appointment = await Appointment.create({
-      customerName: customerName.trim(),
-      customerPhone: phone,
-      customerId: customer._id.toString(),
-      date,
-      time,
-      barberId,
-      barberName: barber.name,
-      status: appointmentStatus,
-      transferNumber: transferNumber?.trim() || undefined,
-    });
-    await invalidateAvailabilityCache(barberId, date);
+    let appointment;
+    try {
+      appointment = await Appointment.create({
+        customerName: customerName.trim(),
+        customerPhone: phone,
+        customerId: customer._id.toString(),
+        date,
+        time,
+        barberId,
+        barberName: barber.name,
+        status: appointmentStatus,
+      });
+    } catch (error) {
+      if (isDuplicateSlotError(error)) {
+        return NextResponse.json(
+          { error: 'This time slot is already booked' },
+          { status: 409 }
+        );
+      }
+      throw error;
+    }
+
+    if (holdsSlot(appointmentStatus)) {
+      await invalidateAvailabilityCache(barberId, date);
+    }
 
     const response = NextResponse.json({
       message: settings.payToConfirm
-        ? 'Appointment submitted for review'
+        ? 'Appointment booked. It stays unconfirmed until you pay.'
         : 'Appointment booked successfully',
       guestToken: token,
       data: appointment,

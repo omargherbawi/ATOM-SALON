@@ -38,11 +38,14 @@ export type GuestAppointment = {
   _id: string;
   customerName: string;
   customerPhone?: string;
+  barberId: string;
   barberName: string;
   date: string;
   time: string;
   status: string;
   transferNumber?: string;
+  /** Set on unconfirmed bookings whose slot someone else has already paid for. */
+  slotTaken?: boolean;
 };
 
 const DEFAULT_SETTINGS: PublicSettings = {
@@ -151,6 +154,32 @@ export async function getGuestAppointments(token: string): Promise<{
     .limit(50)
     .toArray();
 
+  // An unconfirmed booking never holds its slot, so tell the customer as soon
+  // as somebody else has paid for the same time.
+  const unconfirmed = appointments.filter(
+    (item) => item.status === 'unconfirmed'
+  );
+  const takenSlots = new Set<string>();
+
+  if (unconfirmed.length > 0) {
+    const holders = await db
+      .collection('appointments')
+      .find({
+        status: { $in: [...ACTIVE_BOOKING_STATUSES] },
+        $or: unconfirmed.map((item) => ({
+          barberId: item.barberId,
+          date: item.date,
+          time: item.time,
+        })),
+      })
+      .project({ barberId: 1, date: 1, time: 1 })
+      .toArray();
+
+    for (const holder of holders) {
+      takenSlots.add(`${holder.barberId}|${holder.date}|${holder.time}`);
+    }
+  }
+
   return {
     customer: {
       name: customer.name,
@@ -161,11 +190,15 @@ export async function getGuestAppointments(token: string): Promise<{
       _id: String(item._id),
       customerName: item.customerName,
       customerPhone: item.customerPhone,
+      barberId: String(item.barberId),
       barberName: item.barberName,
       date: item.date,
       time: item.time,
       status: item.status,
       transferNumber: item.transferNumber,
+      slotTaken:
+        item.status === 'unconfirmed' &&
+        takenSlots.has(`${item.barberId}|${item.date}|${item.time}`),
     })),
   };
 }

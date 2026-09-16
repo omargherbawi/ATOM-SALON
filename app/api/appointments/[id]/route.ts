@@ -3,6 +3,8 @@ import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]/route';
 import dbConnect from '@/lib/mongodb';
 import Appointment from '@/models/Appointment';
+import { ACTIVE_BOOKING_STATUSES, holdsSlot } from '@/lib/working-hours';
+import { isDuplicateSlotError } from '@/lib/appointment-errors';
 import { invalidateAvailabilityCache } from '@/lib/public-cache';
 
 export const runtime = 'nodejs';
@@ -68,10 +70,44 @@ export async function PUT(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
+    // Moving an unpaid booking onto the schedule only works while nobody else
+    // has taken that time.
+    if (
+      body.status &&
+      holdsSlot(body.status) &&
+      !holdsSlot(appointment.status)
+    ) {
+      const holder = await Appointment.findOne({
+        _id: { $ne: appointment._id },
+        barberId: appointment.barberId,
+        date: appointment.date,
+        time: appointment.time,
+        status: { $in: [...ACTIVE_BOOKING_STATUSES] },
+      });
+
+      if (holder) {
+        return NextResponse.json(
+          { error: 'Another booking already holds this time slot' },
+          { status: 409 }
+        );
+      }
+    }
+
     if (body.status) appointment.status = body.status;
     if (body.notes !== undefined) appointment.notes = body.notes;
 
-    await appointment.save();
+    try {
+      await appointment.save();
+    } catch (error) {
+      if (isDuplicateSlotError(error)) {
+        return NextResponse.json(
+          { error: 'Another booking already holds this time slot' },
+          { status: 409 }
+        );
+      }
+      throw error;
+    }
+
     await invalidateAvailabilityCache(appointment.barberId, appointment.date);
 
     return NextResponse.json({

@@ -18,7 +18,7 @@ interface Appointment {
   transferNumber?: string;
 }
 
-type Filter = 'today' | 'pending' | 'all';
+type Filter = 'today' | 'pending' | 'unconfirmed' | 'all';
 
 export default function MyAppointmentsPage() {
   const { t, language } = useTranslations();
@@ -32,10 +32,17 @@ export default function MyAppointmentsPage() {
     () => appointments.filter((a) => a.status === 'pending').length,
     [appointments]
   );
+  const unconfirmedCount = useMemo(
+    () => appointments.filter((a) => a.status === 'unconfirmed').length,
+    [appointments]
+  );
 
   const visibleAppointments = useMemo(() => {
     if (filter === 'pending') {
       return appointments.filter((a) => a.status === 'pending');
+    }
+    if (filter === 'unconfirmed') {
+      return appointments.filter((a) => a.status === 'unconfirmed');
     }
     if (filter === 'today') {
       return appointments.filter((a) => a.date === today);
@@ -66,13 +73,21 @@ export default function MyAppointmentsPage() {
     if (res.ok) {
       toast.success('Updated');
       loadAppointments();
-    } else {
-      toast.error('Failed to update');
+      return;
     }
+
+    if (res.status === 409) {
+      toast.error(t('appointments.slotTaken'));
+      loadAppointments();
+      return;
+    }
+
+    toast.error('Failed to update');
   };
 
   const statusBadge = (status: string) => {
     const styles: Record<string, string> = {
+      unconfirmed: 'bg-zinc-500/20 text-zinc-300 border border-zinc-500/40',
       pending: 'bg-yellow-500/20 text-yellow-300 border border-yellow-500/30',
       scheduled: 'bg-amber-500/20 text-amber-300',
       completed: 'bg-green-500/20 text-green-400',
@@ -121,6 +136,11 @@ export default function MyAppointmentsPage() {
         <div className="flex flex-wrap gap-2 mb-4">
           {filterButton('today', t('appointments.today'))}
           {filterButton('pending', t('appointments.pendingTab'), pendingCount)}
+          {filterButton(
+            'unconfirmed',
+            t('appointments.unconfirmedTab'),
+            unconfirmedCount
+          )}
           {filterButton('all', t('appointments.all'))}
         </div>
 
@@ -134,7 +154,9 @@ export default function MyAppointmentsPage() {
               ? t('appointments.noAppointmentsToday')
               : filter === 'pending'
                 ? t('myAppointments.noPending')
-                : t('myAppointments.noAppointments')}
+                : filter === 'unconfirmed'
+                  ? t('myAppointments.noUnconfirmed')
+                  : t('myAppointments.noAppointments')}
           </div>
         ) : (
           <div className="space-y-3">
@@ -144,7 +166,9 @@ export default function MyAppointmentsPage() {
                 className={`rounded-xl border bg-zinc-900 p-4 sm:p-5 flex flex-col sm:flex-row sm:items-center justify-between gap-3 ${
                   appt.status === 'pending'
                     ? 'border-yellow-500/40'
-                    : 'border-amber-500/20'
+                    : appt.status === 'unconfirmed'
+                      ? 'border-zinc-600'
+                      : 'border-amber-500/20'
                 }`}
               >
                 <div className="min-w-0">
@@ -155,8 +179,15 @@ export default function MyAppointmentsPage() {
                     {appt.date} ·{' '}
                     {formatSlotLabel(appt.time, settings.slotDuration || 30, language)}
                   </p>
-                  {(appt.customerPhone || appt.transferNumber) && (
+                  {(appt.customerPhone ||
+                    appt.transferNumber ||
+                    appt.status === 'unconfirmed') && (
                     <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 text-xs text-zinc-400">
+                      {appt.status === 'unconfirmed' && (
+                        <span className="text-zinc-300">
+                          {t('appointments.notPaidYet')}
+                        </span>
+                      )}
                       {appt.customerPhone && (
                         <span>
                           {t('myAppointments.phone')}:{' '}
@@ -182,6 +213,29 @@ export default function MyAppointmentsPage() {
                 </div>
                 <div className="flex flex-wrap items-center gap-3">
                   {statusBadge(appt.status)}
+                  {appt.status === 'unconfirmed' && (
+                    <div className="flex flex-wrap gap-2">
+                      <button
+                        type="button"
+                        onClick={() => updateStatus(appt._id, 'scheduled')}
+                        className="min-h-11 text-xs font-semibold rounded-lg bg-green-500/20 text-green-300 border border-green-500/40 px-3 py-1.5 hover:bg-green-500/30"
+                      >
+                        {t('appointments.confirmManually')}
+                      </button>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          if (!window.confirm(t('myAppointments.confirmReject'))) {
+                            return;
+                          }
+                          updateStatus(appt._id, 'cancelled');
+                        }}
+                        className="min-h-11 text-xs font-semibold rounded-lg bg-red-500/20 text-red-300 border border-red-500/40 px-3 py-1.5 hover:bg-red-500/30"
+                      >
+                        {t('appointments.reject')}
+                      </button>
+                    </div>
+                  )}
                   {appt.status === 'pending' && (
                     <div className="flex flex-wrap gap-2">
                       <button

@@ -4,7 +4,6 @@ import { useCallback, useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
 import {
   AlertCircle,
-  ArrowLeft,
   Calendar,
   CheckCircle2,
   Clock,
@@ -36,11 +35,13 @@ interface GuestAppointment {
   _id: string;
   customerName: string;
   customerPhone?: string;
+  barberId: string;
   barberName: string;
   date: string;
   time: string;
   status: string;
   transferNumber?: string;
+  slotTaken?: boolean;
 }
 
 export default function BookingPage() {
@@ -55,23 +56,36 @@ export default function BookingPage() {
   const [slotsLoading, setSlotsLoading] = useState(false);
   const [guestLoading, setGuestLoading] = useState(true);
   const [showForm, setShowForm] = useState(false);
-  const [bookingStep, setBookingStep] = useState<'details' | 'payment'>('details');
   const [appointments, setAppointments] = useState<GuestAppointment[]>([]);
+  const [payingId, setPayingId] = useState<string | null>(null);
+  const [transferNumbers, setTransferNumbers] = useState<Record<string, string>>(
+    {}
+  );
   const [form, setForm] = useState({
     customerName: '',
     customerPhone: '',
     barberId: '',
     date: localDateString(),
     time: '',
-    transferNumber: '',
   });
 
   const scheduledAppointments = appointments.filter((item) =>
     isActiveBooking(item.status)
   );
-  // Payment goes to the chosen barber's CliQ account when one is set.
-  const selectedBarber = barbers.find((item) => item._id === form.barberId);
   const barbersRequestId = useRef(0);
+
+  // Payment goes to the chosen barber's CliQ account when one is set.
+  const paymentDetailsFor = (barberId: string) => {
+    const barber = barbers.find((item) => item._id === barberId);
+    return {
+      cliqNumber: barber?.cliqNumber || settings.cliqNumber || '00962797598857',
+      cliqBank: barber?.cliqBank || settings.cliqBank || 'Arab Banks',
+    };
+  };
+
+  const payAmountText = t('booking.payAmount')
+    .replace('{amount}', settings.paymentAmount || '1')
+    .replace('{currency}', settings.paymentCurrency || 'JOD');
 
   const loadBarbers = useCallback(async (signal?: AbortSignal) => {
     const requestId = ++barbersRequestId.current;
@@ -264,20 +278,6 @@ export default function BookingPage() {
       return;
     }
 
-    if (settings.payToConfirm && bookingStep === 'details') {
-      setBookingStep('payment');
-      return;
-    }
-
-    if (
-      settings.payToConfirm &&
-      settings.requireTransferNumber !== false &&
-      !form.transferNumber.trim()
-    ) {
-      toast.error(t('booking.transferNumberRequired'));
-      return;
-    }
-
     setSubmitting(true);
     try {
       const profile = readGuestProfile();
@@ -307,24 +307,62 @@ export default function BookingPage() {
 
       toast.success(
         settings.payToConfirm
-          ? data.message || t('booking.pendingNotice')
+          ? t('booking.bookedUnconfirmed')
           : t('booking.success')
       );
       await loadGuestAppointments(data.guestToken);
       setShowForm(false);
-      setBookingStep('details');
       setForm((current) => ({
         ...current,
         barberId: '',
         date: localDateString(),
         time: '',
-        transferNumber: '',
       }));
       setAvailableSlots([]);
     } catch {
       toast.error('Something went wrong');
     } finally {
       setSubmitting(false);
+    }
+  };
+
+  const handlePay = async (appointment: GuestAppointment) => {
+    const transferNumber = (transferNumbers[appointment._id] || '').trim();
+
+    if (settings.requireTransferNumber !== false && !transferNumber) {
+      toast.error(t('booking.transferNumberRequired'));
+      return;
+    }
+
+    setPayingId(appointment._id);
+    try {
+      const profile = readGuestProfile();
+      const res = await fetch(
+        `/api/public/appointments/${appointment._id}/pay`,
+        {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          credentials: 'include',
+          body: JSON.stringify({ guestToken: profile?.token, transferNumber }),
+        }
+      );
+      const data = await res.json();
+
+      if (!res.ok) {
+        toast.error(
+          data.slotTaken ? t('booking.slotTakenNotice') : data.error || t('booking.slotTaken')
+        );
+        await loadGuestAppointments();
+        return;
+      }
+
+      toast.success(t('booking.paymentSubmitted'));
+      setTransferNumbers((current) => ({ ...current, [appointment._id]: '' }));
+      await loadGuestAppointments();
+    } catch {
+      toast.error('Something went wrong');
+    } finally {
+      setPayingId(null);
     }
   };
 
@@ -404,75 +442,187 @@ export default function BookingPage() {
           </div>
         ) : !showForm && scheduledAppointments.length > 0 ? (
           <div className="space-y-4">
-            {scheduledAppointments.map((appt) => (
-              <div
-                key={appt._id}
-                className="rounded-2xl border border-amber-500/25 bg-zinc-900/60 p-5 sm:p-6 space-y-4"
-              >
-                {appt.status === 'pending' ? (
-                  <div className="flex items-center gap-2 text-amber-400">
-                    <AlertCircle className="h-5 w-5" />
-                    <span className="text-sm font-medium">
-                      {t('booking.pendingReview')}
-                    </span>
-                  </div>
-                ) : (
-                  <div className="flex items-center gap-2 text-green-400">
-                    <CheckCircle2 className="h-5 w-5" />
-                    <span className="text-sm font-medium">
-                      {t('booking.confirmed')}
-                    </span>
-                  </div>
-                )}
-                {appt.status === 'pending' && (
-                  <p className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
-                    {t('booking.pendingNotice')}
-                  </p>
-                )}
-                <div className="space-y-3 text-sm">
-                  <p className="flex items-center gap-2 text-zinc-200">
-                    <User className="h-4 w-4 text-amber-400" />
-                    {appt.customerName}
-                  </p>
-                  {appt.customerPhone && (
-                    <p className="flex items-center gap-2 text-zinc-200">
-                      <Phone className="h-4 w-4 text-amber-400" />
-                      {appt.customerPhone}
-                    </p>
-                  )}
-                  <p className="flex items-center gap-2 text-zinc-200">
-                    <Scissors className="h-4 w-4 text-amber-400" />
-                    {appt.barberName}
-                  </p>
-                  <p className="flex items-center gap-2 text-zinc-200">
-                    <Calendar className="h-4 w-4 text-amber-400" />
-                    {appt.date}
-                  </p>
-                  <p className="flex items-center gap-2 text-zinc-200">
-                    <Clock className="h-4 w-4 text-amber-400" />
-                    {formatSlotLabel(appt.time, settings.slotDuration || 30, language)}
-                  </p>
-                  {appt.transferNumber && (
-                    <p className="flex items-center gap-2 text-zinc-200">
-                      <CreditCard className="h-4 w-4 text-amber-400" />
-                      <span className="text-zinc-400">{t('booking.transferNumber')}:</span>
-                      <span className="font-mono text-amber-300">{appt.transferNumber}</span>
-                    </p>
-                  )}
-                </div>
-                <button
-                  type="button"
-                  onClick={() => handleCancel(appt._id)}
-                  disabled={cancellingId === appt._id}
-                  className="min-h-11 w-full rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+            {scheduledAppointments.map((appt) => {
+              const unconfirmed = appt.status === 'unconfirmed';
+              const slotTaken = Boolean(unconfirmed && appt.slotTaken);
+              const payment = paymentDetailsFor(appt.barberId);
+
+              return (
+                <div
+                  key={appt._id}
+                  className={`rounded-2xl border bg-zinc-900/60 p-5 sm:p-6 space-y-4 ${
+                    slotTaken
+                      ? 'border-red-500/40'
+                      : unconfirmed
+                        ? 'border-amber-500/40'
+                        : 'border-amber-500/25'
+                  }`}
                 >
-                  {cancellingId === appt._id
-                    ? t('common.loading')
-                    : t('booking.cancelAppointment')}
-                </button>
-              </div>
-            ))}
-         
+                  {slotTaken ? (
+                    <div className="flex items-center gap-2 text-red-400">
+                      <AlertCircle className="h-5 w-5" />
+                      <span className="text-sm font-medium">
+                        {t('booking.slotTakenTitle')}
+                      </span>
+                    </div>
+                  ) : unconfirmed ? (
+                    <div className="flex items-center gap-2 text-amber-400">
+                      <AlertCircle className="h-5 w-5" />
+                      <span className="text-sm font-medium">
+                        {t('booking.unconfirmedTitle')}
+                      </span>
+                    </div>
+                  ) : appt.status === 'pending' ? (
+                    <div className="flex items-center gap-2 text-amber-400">
+                      <AlertCircle className="h-5 w-5" />
+                      <span className="text-sm font-medium">
+                        {t('booking.pendingReview')}
+                      </span>
+                    </div>
+                  ) : (
+                    <div className="flex items-center gap-2 text-green-400">
+                      <CheckCircle2 className="h-5 w-5" />
+                      <span className="text-sm font-medium">
+                        {t('booking.confirmed')}
+                      </span>
+                    </div>
+                  )}
+                  {slotTaken ? (
+                    <p className="text-xs text-red-300 bg-red-500/10 border border-red-500/20 rounded-lg p-2.5">
+                      {t('booking.slotTakenNotice')}
+                    </p>
+                  ) : unconfirmed ? (
+                    <p className="text-xs text-amber-300 bg-amber-500/10 border border-amber-500/20 rounded-lg p-3 leading-relaxed">
+                      {t('booking.unconfirmedNotice')} {payAmountText}
+                    </p>
+                  ) : appt.status === 'pending' ? (
+                    <p className="text-xs text-amber-400/90 bg-amber-500/10 border border-amber-500/20 rounded-lg p-2.5">
+                      {t('booking.pendingNotice')}
+                    </p>
+                  ) : null}
+                  <div className="space-y-3 text-sm">
+                    <p className="flex items-center gap-2 text-zinc-200">
+                      <User className="h-4 w-4 text-amber-400" />
+                      {appt.customerName}
+                    </p>
+                    {appt.customerPhone && (
+                      <p className="flex items-center gap-2 text-zinc-200">
+                        <Phone className="h-4 w-4 text-amber-400" />
+                        {appt.customerPhone}
+                      </p>
+                    )}
+                    <p className="flex items-center gap-2 text-zinc-200">
+                      <Scissors className="h-4 w-4 text-amber-400" />
+                      {appt.barberName}
+                    </p>
+                    <p className="flex items-center gap-2 text-zinc-200">
+                      <Calendar className="h-4 w-4 text-amber-400" />
+                      {appt.date}
+                    </p>
+                    <p className="flex items-center gap-2 text-zinc-200">
+                      <Clock className="h-4 w-4 text-amber-400" />
+                      {formatSlotLabel(appt.time, settings.slotDuration || 30, language)}
+                    </p>
+                    {appt.transferNumber && (
+                      <p className="flex items-center gap-2 text-zinc-200">
+                        <CreditCard className="h-4 w-4 text-amber-400" />
+                        <span className="text-zinc-400">{t('booking.transferNumber')}:</span>
+                        <span className="font-mono text-amber-300">{appt.transferNumber}</span>
+                      </p>
+                    )}
+                  </div>
+                  {unconfirmed && !slotTaken && (
+                    <div className="rounded-xl border border-amber-500/20 bg-zinc-950/80 p-4 space-y-3">
+                      <div className="flex items-center gap-2 text-amber-300">
+                        <CreditCard className="h-4 w-4" />
+                        <span className="text-sm font-semibold">
+                          {t('booking.paymentStepTitle')}
+                        </span>
+                      </div>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs">
+                        <div className="rounded-lg bg-zinc-900 border border-zinc-800 p-3">
+                          <span className="text-zinc-500 block mb-1">
+                            {t('booking.cliqNumber')}
+                          </span>
+                          <span
+                            dir="ltr"
+                            className="font-mono text-sm text-amber-300 font-bold select-all"
+                          >
+                            {payment.cliqNumber}
+                          </span>
+                        </div>
+                        <div className="rounded-lg bg-zinc-900 border border-zinc-800 p-3">
+                          <span className="text-zinc-500 block mb-1">
+                            {t('booking.cliqBank')}
+                          </span>
+                          <span className="text-sm text-zinc-200 font-medium">
+                            {payment.cliqBank}
+                          </span>
+                        </div>
+                      </div>
+
+                      {settings.requireTransferNumber !== false && (
+                        <div>
+                          <label className="flex items-center gap-2 text-xs font-medium text-amber-300 mb-2">
+                            <CreditCard className="h-4 w-4" />
+                            {t('booking.transferNumber')}
+                          </label>
+                          <input
+                            type="text"
+                            value={transferNumbers[appt._id] || ''}
+                            onChange={(e) =>
+                              setTransferNumbers((current) => ({
+                                ...current,
+                                [appt._id]: e.target.value,
+                              }))
+                            }
+                            placeholder={t('booking.transferNumberPlaceholder')}
+                            className={fieldClass}
+                          />
+                        </div>
+                      )}
+
+                      <button
+                        type="button"
+                        onClick={() => handlePay(appt)}
+                        disabled={payingId === appt._id}
+                        className="w-full min-h-11 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 py-3 text-sm font-semibold text-black hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 transition-all shadow-lg shadow-amber-500/20 cursor-pointer"
+                      >
+                        {payingId === appt._id ? (
+                          <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+                        ) : (
+                          t('booking.markAsPaid')
+                        )}
+                      </button>
+                      <p className="text-[11px] text-zinc-500 text-center">
+                        {t('booking.payLaterHint')}
+                      </p>
+                    </div>
+                  )}
+
+                  {slotTaken && (
+                    <button
+                      type="button"
+                      onClick={() => setShowForm(true)}
+                      className="min-h-11 w-full rounded-lg bg-amber-500 text-black font-semibold hover:bg-amber-400"
+                    >
+                      {t('booking.bookAnother')}
+                    </button>
+                  )}
+
+                  <button
+                    type="button"
+                    onClick={() => handleCancel(appt._id)}
+                    disabled={cancellingId === appt._id}
+                    className="min-h-11 w-full rounded-lg border border-red-500/40 text-red-400 hover:bg-red-500/10 disabled:opacity-50"
+                  >
+                    {cancellingId === appt._id
+                      ? t('common.loading')
+                      : t('booking.cancelAppointment')}
+                  </button>
+                </div>
+              );
+            })}
           </div>
         ) : barbersError ? (
           <div className="rounded-xl border border-red-500/30 bg-zinc-900/50 p-8 text-center space-y-4">
@@ -494,219 +644,136 @@ export default function BookingPage() {
             onSubmit={handleSubmit}
             className="rounded-2xl border border-amber-500/25 bg-zinc-900/60 backdrop-blur p-5 sm:p-8 shadow-xl shadow-amber-500/5 space-y-6"
           >
-            {bookingStep === 'payment' ? (
-              <div className="space-y-6">
-                <div className="flex items-center gap-3 border-b border-zinc-800 pb-4">
-                  <div className="rounded-full bg-amber-500/10 p-2.5 border border-amber-500/30">
-                    <CreditCard className="h-6 w-6 text-amber-400" />
-                  </div>
-                  <div>
-                    <h3 className="text-lg font-bold text-amber-400">
-                      {t('booking.paymentStepTitle')}
-                    </h3>
-                    <p className="text-xs text-zinc-400">
-                      {t('booking.paymentStepSubtitle')}
-                    </p>
-                  </div>
-                </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-amber-300 mb-2">
+                <User className="h-4 w-4" />
+                {t('booking.yourName')}
+              </label>
+              <input
+                type="text"
+                value={form.customerName}
+                onChange={(e) =>
+                  setForm({ ...form, customerName: e.target.value })
+                }
+                placeholder={t('booking.yourNamePlaceholder')}
+                className={fieldClass}
+              />
+            </div>
 
-                <div className="rounded-xl border border-amber-500/20 bg-zinc-950/80 p-4 sm:p-5 space-y-3">
-                  <p className="text-sm font-semibold text-amber-300">
-                    {t('booking.payAmount')
-                      .replace('{amount}', settings.paymentAmount || '1')
-                      .replace('{currency}', settings.paymentCurrency || 'JOD')}
-                  </p>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-2 text-xs">
-                    <div className="rounded-lg bg-zinc-900 border border-zinc-800 p-3">
-                      <span className="text-zinc-500 block mb-1">{t('booking.cliqNumber')}</span>
-                      <span className="font-mono text-sm text-amber-300 font-bold select-all">
-                        {selectedBarber?.cliqNumber || settings.cliqNumber || '00962797598857'}
-                      </span>
-                    </div>
-                    <div className="rounded-lg bg-zinc-900 border border-zinc-800 p-3">
-                      <span className="text-zinc-500 block mb-1">{t('booking.cliqBank')}</span>
-                      <span className="text-sm text-zinc-200 font-medium">
-                        {selectedBarber?.cliqBank || settings.cliqBank || 'Arab Banks'}
-                      </span>
-                    </div>
-                  </div>
-                </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-amber-300 mb-2">
+                <Phone className="h-4 w-4" />
+                {t('booking.yourPhone')}
+              </label>
+              <input
+                type="tel"
+                inputMode="tel"
+                value={form.customerPhone}
+                onChange={(e) =>
+                  setForm({ ...form, customerPhone: e.target.value })
+                }
+                placeholder={t('booking.yourPhonePlaceholder')}
+                className={fieldClass}
+              />
+            </div>
 
-                {settings.requireTransferNumber !== false && (
-                  <div>
-                    <label className="flex items-center gap-2 text-sm font-medium text-amber-300 mb-2">
-                      <CreditCard className="h-4 w-4" />
-                      {t('booking.transferNumber')}
-                    </label>
-                    <input
-                      type="text"
-                      value={form.transferNumber}
-                      onChange={(e) =>
-                        setForm({ ...form, transferNumber: e.target.value })
-                      }
-                      placeholder={t('booking.transferNumberPlaceholder')}
-                      className={fieldClass}
-                      required
-                    />
-                  </div>
-                )}
-
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full min-h-11 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 py-3.5 text-sm font-semibold text-black hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 transition-all shadow-lg shadow-amber-500/20 cursor-pointer"
-                >
-                  {submitting ? (
-                    <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-                  ) : (
-                    t('booking.confirmBooking')
-                  )}
-                </button>
-
-                <button
-                  type="button"
-                  onClick={() => setBookingStep('details')}
-                  disabled={submitting}
-                  className="w-full min-h-11 rounded-lg border border-zinc-700 text-zinc-300 hover:bg-zinc-800 flex items-center justify-center gap-2"
-                >
-                  <ArrowLeft className="h-4 w-4" />
-                  {t('common.back')}
-                </button>
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-amber-300 mb-2">
+                <Scissors className="h-4 w-4" />
+                {t('booking.selectBarber')}
+              </label>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                {barbers.map((barber) => (
+                  <button
+                    key={barber._id}
+                    type="button"
+                    onClick={() =>
+                      setForm({ ...form, barberId: barber._id, time: '' })
+                    }
+                    className={`min-h-11 rounded-lg border px-4 py-3 text-start text-sm font-medium transition-all ${
+                      form.barberId === barber._id
+                        ? 'border-amber-500 bg-amber-500/15 text-amber-300 shadow-sm shadow-amber-500/20'
+                        : 'border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-amber-500/40'
+                    }`}
+                  >
+                    {barber.name}
+                  </button>
+                ))}
               </div>
-            ) : (
-              <>
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-amber-300 mb-2">
-                    <User className="h-4 w-4" />
-                    {t('booking.yourName')}
-                  </label>
-                  <input
-                    type="text"
-                    value={form.customerName}
-                    onChange={(e) =>
-                      setForm({ ...form, customerName: e.target.value })
-                    }
-                    placeholder={t('booking.yourNamePlaceholder')}
-                    className={fieldClass}
-                  />
-                </div>
+            </div>
 
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-amber-300 mb-2">
-                    <Phone className="h-4 w-4" />
-                    {t('booking.yourPhone')}
-                  </label>
-                  <input
-                    type="tel"
-                    inputMode="tel"
-                    value={form.customerPhone}
-                    onChange={(e) =>
-                      setForm({ ...form, customerPhone: e.target.value })
-                    }
-                    placeholder={t('booking.yourPhonePlaceholder')}
-                    className={fieldClass}
-                  />
-                </div>
+            <div>
+              <label className="flex items-center gap-2 text-sm font-medium text-amber-300 mb-2">
+                <Calendar className="h-4 w-4" />
+                {t('booking.selectDate')}
+              </label>
+              <input
+                type="date"
+                value={form.date}
+                min={localDateString()}
+                onChange={(e) =>
+                  setForm({ ...form, date: e.target.value, time: '' })
+                }
+                className={fieldClass}
+              />
+            </div>
 
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-amber-300 mb-2">
-                    <Scissors className="h-4 w-4" />
-                    {t('booking.selectBarber')}
-                  </label>
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                    {barbers.map((barber) => (
+            {form.barberId && (
+              <div>
+                <label className="flex items-center gap-2 text-sm font-medium text-amber-300 mb-2">
+                  <Clock className="h-4 w-4" />
+                  {t('booking.selectTime')}
+                </label>
+                {slotsLoading ? (
+                  <div className="flex justify-center py-4">
+                    <Loader2 className="h-6 w-6 animate-spin text-amber-400" />
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
+                    {availableSlots.map((slot) => (
                       <button
-                        key={barber._id}
+                        key={slot}
                         type="button"
-                        onClick={() =>
-                          setForm({ ...form, barberId: barber._id, time: '' })
-                        }
-                        className={`min-h-11 rounded-lg border px-4 py-3 text-start text-sm font-medium transition-all ${
-                          form.barberId === barber._id
-                            ? 'border-amber-500 bg-amber-500/15 text-amber-300 shadow-sm shadow-amber-500/20'
+                        onClick={() => setForm({ ...form, time: slot })}
+                        className={`min-h-11 rounded-lg border px-3 py-2.5 text-xs sm:text-sm font-medium whitespace-nowrap flex items-center justify-center transition-all ${
+                          form.time === slot
+                            ? 'border-amber-500 bg-amber-500/15 text-amber-300'
                             : 'border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-amber-500/40'
                         }`}
                       >
-                        {barber.name}
+                        {formatSlotLabel(slot, settings.slotDuration || 30, language)}
                       </button>
                     ))}
                   </div>
-                </div>
-
-                <div>
-                  <label className="flex items-center gap-2 text-sm font-medium text-amber-300 mb-2">
-                    <Calendar className="h-4 w-4" />
-                    {t('booking.selectDate')}
-                  </label>
-                  <input
-                    type="date"
-                    value={form.date}
-                    min={localDateString()}
-                    onChange={(e) =>
-                      setForm({ ...form, date: e.target.value, time: '' })
-                    }
-                    className={fieldClass}
-                  />
-                </div>
-
-                {form.barberId && (
-                  <div>
-                    <label className="flex items-center gap-2 text-sm font-medium text-amber-300 mb-2">
-                      <Clock className="h-4 w-4" />
-                      {t('booking.selectTime')}
-                    </label>
-                    {slotsLoading ? (
-                      <div className="flex justify-center py-4">
-                        <Loader2 className="h-6 w-6 animate-spin text-amber-400" />
-                      </div>
-                    ) : (
-                      <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 gap-2">
-                        {availableSlots.map((slot) => (
-                          <button
-                            key={slot}
-                            type="button"
-                            onClick={() => setForm({ ...form, time: slot })}
-                            className={`min-h-11 rounded-lg border px-3 py-2.5 text-xs sm:text-sm font-medium whitespace-nowrap flex items-center justify-center transition-all ${
-                              form.time === slot
-                                ? 'border-amber-500 bg-amber-500/15 text-amber-300'
-                                : 'border-zinc-700 bg-zinc-950 text-zinc-300 hover:border-amber-500/40'
-                            }`}
-                          >
-                            {formatSlotLabel(slot, settings.slotDuration || 30, language)}
-                          </button>
-                        ))}
-                      </div>
-                    )}
-                    {!slotsLoading && availableSlots.length === 0 && (
-                      <p className="text-sm text-zinc-500 mt-2">
-                        {t('booking.noSlots')}
-                      </p>
-                    )}
-                  </div>
                 )}
-
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="w-full min-h-11 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 py-3.5 text-sm font-semibold text-black hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 transition-all shadow-lg shadow-amber-500/20 cursor-pointer"
-                >
-                  {submitting ? (
-                    <Loader2 className="h-5 w-5 animate-spin mx-auto" />
-                  ) : (
-                    t('booking.submit')
-                  )}
-                </button>
-
-                {scheduledAppointments.length > 0 && (
-                  <button
-                    type="button"
-                    onClick={() => setShowForm(false)}
-                    className="w-full min-h-11 rounded-lg border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
-                  >
-                    {t('booking.backToAppointments')}
-                  </button>
+                {!slotsLoading && availableSlots.length === 0 && (
+                  <p className="text-sm text-zinc-500 mt-2">
+                    {t('booking.noSlots')}
+                  </p>
                 )}
-              </>
+              </div>
+            )}
+
+            <button
+              type="submit"
+              disabled={submitting}
+              className="w-full min-h-11 rounded-xl bg-gradient-to-r from-amber-500 to-amber-600 py-3.5 text-sm font-semibold text-black hover:from-amber-400 hover:to-amber-500 disabled:opacity-50 transition-all shadow-lg shadow-amber-500/20 cursor-pointer"
+            >
+              {submitting ? (
+                <Loader2 className="h-5 w-5 animate-spin mx-auto" />
+              ) : (
+                t('booking.submit')
+              )}
+            </button>
+
+            {scheduledAppointments.length > 0 && (
+              <button
+                type="button"
+                onClick={() => setShowForm(false)}
+                className="w-full min-h-11 rounded-lg border border-zinc-700 text-zinc-300 hover:bg-zinc-800"
+              >
+                {t('booking.backToAppointments')}
+              </button>
             )}
           </form>
         )}

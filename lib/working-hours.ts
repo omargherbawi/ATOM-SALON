@@ -15,6 +15,9 @@ export const WEEKDAY_KEYS = [
   'saturday',
 ] as const;
 
+// Only these two statuses hold a slot. An `unconfirmed` booking is a real
+// booking the customer has not paid for yet, so its time stays open for
+// everybody else until the payment arrives.
 export const ACTIVE_BOOKING_STATUSES = ['scheduled', 'pending'] as const;
 
 const TIME_PATTERN = /^([01]\d|2[0-3]):([0-5]\d)$/;
@@ -160,8 +163,14 @@ export function filterPastSlots(
   return slots.filter((slot) => timeToMinutes(slot) > nowMinutes);
 }
 
-export function isActiveBooking(status: string): boolean {
+/** True when the booking takes the slot away from other customers. */
+export function holdsSlot(status: string): boolean {
   return status === 'scheduled' || status === 'pending';
+}
+
+/** True for any live booking, including one still waiting to be paid for. */
+export function isActiveBooking(status: string): boolean {
+  return holdsSlot(status) || status === 'unconfirmed';
 }
 
 export type BarberBreak = {
