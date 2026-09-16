@@ -11,7 +11,10 @@ import { getCloudflareContext } from '@opennextjs/cloudflare';
 //   3. Workers KV     - global, so a cold city never waits on Atlas
 const CACHE_NAME = 'atom-salon-public';
 const KV_MIN_TTL_SECONDS = 60;
-const LOAD_TIMEOUT_MS = 20_000;
+// Below the booking page's own 12s deadline on purpose: a stalled Atlas call
+// should surface as a fast 503 the client can retry against a warm isolate,
+// rather than have the browser give up first and leave the request hanging.
+const LOAD_TIMEOUT_MS = 10_000;
 
 type Envelope<T> = {
   v: T;

@@ -7,6 +7,18 @@
     "nodejs_compat",
     "global_fetch_strictly_public"
   ],
+  // An old deploy registered a `*/3 * * * *` cron. Wrangler only rewrites cron
+  // triggers when the key is present, so dropping it from the config left the
+  // schedule running against a Worker that exports no `scheduled()` handler:
+  // 480 failed invocations a day, all of them logged as errors. An explicit
+  // empty list is what actually unregisters it.
+  "triggers": {
+    "crons": []
+  },
+  // Smart Placement currently resolves to Mumbai (`cf-placement: remote-BOM`),
+  // so every request from Jordan crosses to India and back. That only pays off
+  // while MongoDB Atlas lives in the same region - if the cluster is moved
+  // closer to the customers (e.g. AWS eu-central-1), drop this block.
   "placement": {
     "mode": "smart"
   },
@@ -32,4 +44,8 @@
   "observability": {
     "enabled": true
   }
+  // On the Workers Paid plan, raise the per-request CPU ceiling from the free
+  // plan's 10ms - that is the single change that removes the remaining
+  // "Worker exceeded CPU time limit" 503s:
+  //   "limits": { "cpu_ms": 30000 }
 }

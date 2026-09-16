@@ -44,6 +44,54 @@ interface GuestAppointment {
   slotTaken?: boolean;
 }
 
+interface BootstrapSettings {
+  systemTitle?: string;
+  tagline?: string;
+  slotDuration?: number;
+  payToConfirm?: boolean;
+  requireTransferNumber?: boolean;
+  paymentAmount?: string;
+  paymentCurrency?: string;
+  cliqNumber?: string;
+  cliqBank?: string;
+}
+
+interface BootstrapResponse {
+  settings?: BootstrapSettings;
+  barbers?: Barber[];
+  appointments?: GuestAppointment[];
+  customer?: { name?: string; phone?: string } | null;
+  guestToken?: string;
+}
+
+// A Worker that runs out of CPU is killed without ever answering, so a fetch
+// with no deadline of its own can hang until the browser gives up minutes
+// later. That is what left the page on its spinner forever. Every request the
+// first paint depends on goes through this helper instead.
+const REQUEST_TIMEOUT_MS = 12_000;
+const BOOTSTRAP_ATTEMPTS = 2;
+
+async function fetchJson<T>(
+  url: string,
+  timeoutMs = REQUEST_TIMEOUT_MS
+): Promise<T> {
+  // `AbortSignal.timeout` is missing from the older iOS Safari versions a lot
+  // of the salon's customers are on, so the timer is wired up by hand.
+  const controller = new AbortController();
+  const timer = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, {
+      credentials: 'include',
+      cache: 'no-store',
+      signal: controller.signal,
+    });
+    if (!res.ok) throw new Error(`Request failed with ${res.status}`);
+    return (await res.json()) as T;
+  } finally {
+    clearTimeout(timer);
+  }
+}
+
 export default function BookingPage() {
   const { t, language } = useTranslations();
   const { settings, hydrateSettings } = useSettings();
@@ -87,34 +135,6 @@ export default function BookingPage() {
     .replace('{amount}', settings.paymentAmount || '1')
     .replace('{currency}', settings.paymentCurrency || 'JOD');
 
-  const loadBarbers = useCallback(async (signal?: AbortSignal) => {
-    const requestId = ++barbersRequestId.current;
-    setBarbersLoading(true);
-    setBarbersError(false);
-
-    try {
-      const res = await fetch('/api/public/barbers', {
-        signal,
-        cache: 'no-store',
-      });
-      if (!res.ok) throw new Error('Failed to load barbers');
-      const data = await res.json();
-      if (requestId !== barbersRequestId.current) return;
-      if (Array.isArray(data)) setBarbers(data);
-      else setBarbersError(true);
-    } catch (error) {
-      if (requestId !== barbersRequestId.current) return;
-      if (signal?.aborted || (error instanceof Error && error.name === 'AbortError')) {
-        return;
-      }
-      setBarbersError(true);
-    } finally {
-      if (requestId === barbersRequestId.current) {
-        setBarbersLoading(false);
-      }
-    }
-  }, []);
-
   const loadGuestAppointments = async (token?: string) => {
     const profile = readGuestProfile();
     const guestToken = token || profile?.token;
@@ -122,8 +142,12 @@ export default function BookingPage() {
       ? `/api/public/my-appointments?token=${encodeURIComponent(guestToken)}`
       : '/api/public/my-appointments';
 
-    const res = await fetch(query, { credentials: 'include' });
-    const data = await res.json();
+    // Callers reach here right after a booking, payment or cancellation has
+    // already succeeded, so failing to re-read the list is not worth an error
+    // toast. Keep what is on screen.
+    const data = await fetchJson<BootstrapResponse>(query).catch(() => null);
+    if (!data) return appointments;
+
     const list: GuestAppointment[] = Array.isArray(data.appointments)
       ? data.appointments
       : [];
@@ -137,11 +161,12 @@ export default function BookingPage() {
       });
     }
 
-    if (data.customer?.name) {
+    const customerName = data.customer?.name;
+    if (customerName) {
       setForm((current) => ({
         ...current,
-        customerName: current.customerName || data.customer.name,
-        customerPhone: current.customerPhone || data.customer.phone || '',
+        customerName: current.customerName || customerName,
+        customerPhone: current.customerPhone || data.customer?.phone || '',
       }));
     } else if (profile) {
       setForm((current) => ({
@@ -154,9 +179,68 @@ export default function BookingPage() {
     return list;
   };
 
-  useEffect(() => {
-    const controller = new AbortController();
+  const applyBootstrap = useCallback(
+    (
+      data: BootstrapResponse,
+      profile: ReturnType<typeof readGuestProfile>
+    ) => {
+      const systemTitle = data.settings?.systemTitle;
+      if (systemTitle) {
+        hydrateSettings({
+          systemTitle,
+          tagline: data.settings?.tagline,
+          slotDuration: data.settings?.slotDuration,
+          payToConfirm: data.settings?.payToConfirm,
+          requireTransferNumber: data.settings?.requireTransferNumber,
+          paymentAmount: data.settings?.paymentAmount,
+          paymentCurrency: data.settings?.paymentCurrency,
+          cliqNumber: data.settings?.cliqNumber,
+          cliqBank: data.settings?.cliqBank,
+        });
+      }
+
+      if (Array.isArray(data.barbers)) {
+        setBarbers(data.barbers);
+      } else {
+        setBarbersError(true);
+      }
+
+      const list: GuestAppointment[] = Array.isArray(data.appointments)
+        ? data.appointments
+        : [];
+      setAppointments(list);
+      setShowForm(!list.some((item) => isActiveBooking(item.status)));
+
+      if (data.guestToken || profile?.token) {
+        saveGuestProfile({
+          token: data.guestToken || profile?.token || '',
+          name: data.customer?.name || profile?.name || '',
+          phone: data.customer?.phone || profile?.phone || '',
+        });
+      }
+
+      const customerName = data.customer?.name;
+      if (customerName) {
+        setForm((current) => ({
+          ...current,
+          customerName: current.customerName || customerName,
+          customerPhone: current.customerPhone || data.customer?.phone || '',
+        }));
+      } else if (profile) {
+        setForm((current) => ({
+          ...current,
+          customerName: current.customerName || profile.name,
+          customerPhone: current.customerPhone || profile.phone,
+        }));
+      }
+    },
+    [hydrateSettings]
+  );
+
+  const loadBootstrap = useCallback(async () => {
     const requestId = ++barbersRequestId.current;
+    const stale = () => requestId !== barbersRequestId.current;
+
     setBarbersLoading(true);
     setBarbersError(false);
 
@@ -165,85 +249,35 @@ export default function BookingPage() {
       ? `/api/public/bootstrap?token=${encodeURIComponent(profile.token)}`
       : '/api/public/bootstrap';
 
-    fetch(query, { credentials: 'include', signal: controller.signal })
-      .then(async (res) => {
-        if (!res.ok) throw new Error('Failed to load booking data');
-        return res.json();
-      })
-      .then((data) => {
-        if (requestId !== barbersRequestId.current) return;
-
-        if (data.settings?.systemTitle) {
-          hydrateSettings({
-            systemTitle: data.settings.systemTitle,
-            tagline: data.settings.tagline,
-            slotDuration: data.settings.slotDuration,
-            payToConfirm: data.settings.payToConfirm,
-            requireTransferNumber: data.settings.requireTransferNumber,
-            paymentAmount: data.settings.paymentAmount,
-            paymentCurrency: data.settings.paymentCurrency,
-            cliqNumber: data.settings.cliqNumber,
-            cliqBank: data.settings.cliqBank,
-          });
-        }
-
-        if (Array.isArray(data.barbers)) {
-          setBarbers(data.barbers);
-        } else {
-          setBarbersError(true);
-        }
-
-        const list: GuestAppointment[] = Array.isArray(data.appointments)
-          ? data.appointments
-          : [];
-        setAppointments(list);
-        setShowForm(!list.some((item) => isActiveBooking(item.status)));
-
-        if (data.guestToken || profile?.token) {
-          saveGuestProfile({
-            token: data.guestToken || profile?.token || '',
-            name: data.customer?.name || profile?.name || '',
-            phone: data.customer?.phone || profile?.phone || '',
-          });
-        }
-
-        if (data.customer?.name) {
-          setForm((current) => ({
-            ...current,
-            customerName: current.customerName || data.customer.name,
-            customerPhone: current.customerPhone || data.customer.phone || '',
-          }));
-        } else if (profile) {
-          setForm((current) => ({
-            ...current,
-            customerName: current.customerName || profile.name,
-            customerPhone: current.customerPhone || profile.phone,
-          }));
-        }
-      })
-      .catch((error) => {
-        if (requestId !== barbersRequestId.current) return;
-        if (
-          controller.signal.aborted ||
-          (error instanceof Error && error.name === 'AbortError')
-        ) {
-          return;
-        }
+    for (let attempt = 1; attempt <= BOOTSTRAP_ATTEMPTS; attempt += 1) {
+      try {
+        const data = await fetchJson<BootstrapResponse>(query);
+        if (stale()) return;
+        applyBootstrap(data, profile);
+        break;
+      } catch {
+        if (stale()) return;
+        // A cold Worker isolate tends to fail once and then answer instantly,
+        // so one silent retry spares most visitors the error state.
+        if (attempt < BOOTSTRAP_ATTEMPTS) continue;
         setBarbersError(true);
         setShowForm(true);
-      })
-      .finally(() => {
-        if (requestId === barbersRequestId.current) {
-          setBarbersLoading(false);
-          setGuestLoading(false);
-        }
-      });
+      }
+    }
 
+    // Reached on every path that is still current, so the spinner always ends.
+    if (stale()) return;
+    setBarbersLoading(false);
+    setGuestLoading(false);
+  }, [applyBootstrap]);
+
+  useEffect(() => {
+    void loadBootstrap();
     return () => {
+      // Anything that lands after this belongs to a render that is gone.
       barbersRequestId.current += 1;
-      controller.abort();
     };
-  }, [hydrateSettings]);
+  }, [loadBootstrap]);
 
   useEffect(() => {
     if (!form.barberId || !form.date) {
@@ -251,17 +285,28 @@ export default function BookingPage() {
       return;
     }
 
+    let cancelled = false;
     setSlotsLoading(true);
-    fetch(
-      `/api/public/availability?barberId=${form.barberId}&date=${form.date}`
+
+    fetchJson<{ available?: string[] }>(
+      `/api/public/availability?barberId=${encodeURIComponent(
+        form.barberId
+      )}&date=${encodeURIComponent(form.date)}`
     )
-      .then((res) => res.json())
       .then((data) => {
-        if (Array.isArray(data?.available)) setAvailableSlots(data.available);
-        else setAvailableSlots([]);
+        if (cancelled) return;
+        setAvailableSlots(Array.isArray(data?.available) ? data.available : []);
       })
-      .catch(() => setAvailableSlots([]))
-      .finally(() => setSlotsLoading(false));
+      .catch(() => {
+        if (!cancelled) setAvailableSlots([]);
+      })
+      .finally(() => {
+        if (!cancelled) setSlotsLoading(false);
+      });
+
+    return () => {
+      cancelled = true;
+    };
   }, [form.barberId, form.date]);
 
   const handleSubmit = async (e: React.FormEvent) => {
@@ -629,7 +674,7 @@ export default function BookingPage() {
             <p className="text-zinc-300">{t('booking.loadError')}</p>
             <button
               type="button"
-              onClick={() => void loadBarbers()}
+              onClick={() => void loadBootstrap()}
               className="rounded-lg border border-amber-500/40 px-4 py-2 text-sm text-amber-300 hover:bg-amber-500/10 transition-colors"
             >
               {t('booking.retry')}
