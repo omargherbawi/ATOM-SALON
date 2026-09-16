@@ -21,7 +21,8 @@ const LanguageContext = createContext<LanguageContextValue | undefined>(
 );
 
 export function LanguageProvider({ children }: { children: React.ReactNode }) {
-  const [language, setLanguageState] = useState<Language>('en');
+  // Arabic is the salon's default; a stored choice below overrides it.
+  const [language, setLanguageState] = useState<Language>('ar');
   const dir = language === 'ar' ? 'rtl' : 'ltr';
 
   useEffect(() => {
