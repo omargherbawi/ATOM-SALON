@@ -1,14 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import User from '@/models/User';
-import Appointment from '@/models/Appointment';
-import Customer from '@/models/Customer';
+import { getMongoDb, ObjectId } from '@/lib/mongodb';
 import {
   ACTIVE_BOOKING_STATUSES,
   filterBreakSlots,
   filterPastSlots,
   getWorkingSlotsForDate,
   holdsSlot,
+  type BarberBreak,
+  type WorkingHour,
 } from '@/lib/working-hours';
 import { isDuplicateSlotError } from '@/lib/appointment-errors';
 import { getPublicSettings } from '@/lib/public-data';
@@ -49,14 +48,24 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Barber is required' }, { status: 400 });
     }
 
-    await dbConnect();
+    let barberObjectId: InstanceType<typeof ObjectId>;
+    try {
+      barberObjectId = new ObjectId(String(barberId));
+    } catch {
+      return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
+    }
+
+    const db = await getMongoDb();
 
     const [barber, settings] = await Promise.all([
-      User.findOne({
-        _id: barberId,
-        role: 'barber',
-        active: true,
-      }).select('name workingHours breaks'),
+      db.collection('users').findOne(
+        {
+          _id: barberObjectId,
+          role: 'barber',
+          active: true,
+        },
+        { projection: { name: 1, workingHours: 1, breaks: 1 } }
+      ),
       getPublicSettings(),
     ]);
 
@@ -68,7 +77,11 @@ export async function POST(request: NextRequest) {
 
     const workingSlots = filterPastSlots(
       date,
-      getWorkingSlotsForDate(barber.workingHours, date, slotDuration)
+      getWorkingSlotsForDate(
+        (barber.workingHours ?? []) as WorkingHour[],
+        date,
+        slotDuration
+      )
     );
 
     if (!workingSlots.includes(time)) {
@@ -78,14 +91,24 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!filterBreakSlots(barber.breaks, date, [time], slotDuration).length) {
+    if (
+      !filterBreakSlots(
+        (barber.breaks ?? []) as BarberBreak[],
+        date,
+        [time],
+        slotDuration
+      ).length
+    ) {
       return NextResponse.json(
         { error: 'The barber is on a break at this time' },
         { status: 400 }
       );
     }
 
-    const existing = await Appointment.findOne({
+    const appointments = db.collection('appointments');
+    const customers = db.collection('customers');
+
+    const existing = await appointments.findOne({
       barberId,
       date,
       time,
@@ -100,22 +123,35 @@ export async function POST(request: NextRequest) {
     }
 
     const incomingToken = readGuestToken(request, guestToken);
-    let customer = incomingToken
-      ? await Customer.findOne({ guestToken: incomingToken })
+    const customer = incomingToken
+      ? await customers.findOne({ guestToken: incomingToken })
       : null;
 
-    const token = customer?.guestToken || createGuestToken();
+    const token = (customer?.guestToken as string) || createGuestToken();
+    const now = new Date();
 
+    let customerId: string;
     if (customer) {
-      customer.name = customerName.trim();
-      customer.phone = phone;
-      await customer.save();
+      await customers.updateOne(
+        { _id: customer._id },
+        {
+          $set: {
+            name: customerName.trim(),
+            phone,
+            updatedAt: now,
+          },
+        }
+      );
+      customerId = String(customer._id);
     } else {
-      customer = await Customer.create({
+      const inserted = await customers.insertOne({
         name: customerName.trim(),
         phone,
         guestToken: token,
+        createdAt: now,
+        updatedAt: now,
       });
+      customerId = String(inserted.insertedId);
     }
 
     // With pay-to-confirm on, the booking is accepted right away but stays
@@ -124,18 +160,23 @@ export async function POST(request: NextRequest) {
       ? 'unconfirmed'
       : 'scheduled';
 
-    let appointment;
+    const appointment = {
+      customerName: customerName.trim(),
+      customerPhone: phone,
+      customerId,
+      date,
+      time,
+      barberId,
+      barberName: barber.name,
+      status: appointmentStatus,
+      createdAt: now,
+      updatedAt: now,
+    };
+
+    let insertedId: InstanceType<typeof ObjectId>;
     try {
-      appointment = await Appointment.create({
-        customerName: customerName.trim(),
-        customerPhone: phone,
-        customerId: customer._id.toString(),
-        date,
-        time,
-        barberId,
-        barberName: barber.name,
-        status: appointmentStatus,
-      });
+      const inserted = await appointments.insertOne({ ...appointment });
+      insertedId = inserted.insertedId;
     } catch (error) {
       if (isDuplicateSlotError(error)) {
         return NextResponse.json(
@@ -155,7 +196,7 @@ export async function POST(request: NextRequest) {
         ? 'Appointment booked. It stays unconfirmed until you pay.'
         : 'Appointment booked successfully',
       guestToken: token,
-      data: appointment,
+      data: { ...appointment, _id: String(insertedId) },
     });
 
     return withGuestCookie(response, token);

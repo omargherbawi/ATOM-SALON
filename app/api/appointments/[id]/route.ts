@@ -1,13 +1,21 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]/route';
-import dbConnect from '@/lib/mongodb';
-import Appointment from '@/models/Appointment';
+import { getMongoDb, ObjectId } from '@/lib/mongodb';
 import { ACTIVE_BOOKING_STATUSES, holdsSlot } from '@/lib/working-hours';
 import { isDuplicateSlotError } from '@/lib/appointment-errors';
 import { invalidateAvailabilityCache } from '@/lib/public-cache';
 
 export const runtime = 'nodejs';
+
+/** Null when the route param is not a valid ObjectId. */
+function toObjectId(id: string) {
+  try {
+    return new ObjectId(id);
+  } catch {
+    return null;
+  }
+}
 
 export async function GET(
   request: NextRequest,
@@ -20,9 +28,16 @@ export async function GET(
     }
 
     const { id } = await params;
-    await dbConnect();
+    const objectId = toObjectId(id);
+    if (!objectId) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
-    const appointment = await Appointment.findById(id);
+    const db = await getMongoDb();
+    const appointment = await db
+      .collection('appointments')
+      .findOne({ _id: objectId });
+
     if (!appointment) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
@@ -35,7 +50,7 @@ export async function GET(
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
-    return NextResponse.json(appointment);
+    return NextResponse.json({ ...appointment, _id: String(appointment._id) });
   } catch (error) {
     console.error('GET /api/appointments/[id] error:', error);
     return NextResponse.json({ error: 'Internal server error' }, { status: 500 });
@@ -58,10 +73,16 @@ export async function PUT(
     }
 
     const { id } = await params;
-    const body = await request.json();
-    await dbConnect();
+    const objectId = toObjectId(id);
+    if (!objectId) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
-    const appointment = await Appointment.findById(id);
+    const body = await request.json();
+    const db = await getMongoDb();
+    const appointments = db.collection('appointments');
+
+    const appointment = await appointments.findOne({ _id: objectId });
     if (!appointment) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
@@ -77,8 +98,8 @@ export async function PUT(
       holdsSlot(body.status) &&
       !holdsSlot(appointment.status)
     ) {
-      const holder = await Appointment.findOne({
-        _id: { $ne: appointment._id },
+      const holder = await appointments.findOne({
+        _id: { $ne: objectId },
         barberId: appointment.barberId,
         date: appointment.date,
         time: appointment.time,
@@ -93,11 +114,17 @@ export async function PUT(
       }
     }
 
-    if (body.status) appointment.status = body.status;
-    if (body.notes !== undefined) appointment.notes = body.notes;
+    const updates: Record<string, unknown> = { updatedAt: new Date() };
+    if (body.status) updates.status = body.status;
+    if (body.notes !== undefined) updates.notes = body.notes;
 
+    let updated;
     try {
-      await appointment.save();
+      updated = await appointments.findOneAndUpdate(
+        { _id: objectId },
+        { $set: updates },
+        { returnDocument: 'after' }
+      );
     } catch (error) {
       if (isDuplicateSlotError(error)) {
         return NextResponse.json(
@@ -112,7 +139,7 @@ export async function PUT(
 
     return NextResponse.json({
       message: 'Appointment updated',
-      data: appointment,
+      data: updated ? { ...updated, _id: String(updated._id) } : null,
     });
   } catch (error) {
     console.error('PUT /api/appointments/[id] error:', error);
@@ -135,9 +162,16 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    await dbConnect();
+    const objectId = toObjectId(id);
+    if (!objectId) {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
-    const appointment = await Appointment.findByIdAndDelete(id);
+    const db = await getMongoDb();
+    const appointment = await db
+      .collection('appointments')
+      .findOneAndDelete({ _id: objectId });
+
     if (!appointment) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }

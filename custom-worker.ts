@@ -1,60 +1,15 @@
-// OpenNext only exports fetch. This wrapper adds a cron that keeps the public
-// cache warm, so visitors never pay for a cold MongoDB connect (which can hang
-// for 15-20s from a fresh Worker isolate).
+// Entrypoint named by wrangler.jsonc. OpenNext only exports `fetch`, so this
+// wrapper exists to keep a single place to extend the Worker.
+//
+// A cron used to pre-warm the public cache by fetching every barber/date pair
+// through WORKER_SELF_REFERENCE. It was papering over connections being shared
+// between requests, and made that failure worse: a run took ~280s against a
+// 180s schedule, so runs overlapped and piled up hung subrequests. Connections
+// are now per request (see lib/mongodb.ts), so the warming is unnecessary.
 // eslint-disable-next-line @typescript-eslint/ban-ts-comment
 // @ts-ignore `.open-next/worker.js` only exists after a build
 import { default as handler } from './.open-next/worker.js';
 
-const WARM_DAYS = 14;
-const MAX_WARM_CALLS = 45;
-
-type WarmEnv = { WORKER_SELF_REFERENCE?: { fetch: typeof fetch } };
-
-function localDate(offsetDays: number) {
-  const date = new Date();
-  date.setUTCDate(date.getUTCDate() + offsetDays);
-  return date.toISOString().slice(0, 10);
-}
-
 export default {
   fetch: handler.fetch,
-
-  async scheduled(
-    _controller: unknown,
-    env: WarmEnv,
-    ctx: { waitUntil: (promise: Promise<unknown>) => void }
-  ) {
-    const origin = 'https://atom-salon.omar-gherbawi.workers.dev';
-
-    const call = (path: string) => {
-      const request = new Request(`${origin}${path}`);
-      if (env.WORKER_SELF_REFERENCE) {
-        return env.WORKER_SELF_REFERENCE.fetch(request);
-      }
-      return handler.fetch(request, env, ctx);
-    };
-
-    const warm = (async () => {
-      const bootstrap = await call('/api/public/bootstrap');
-      const data = (await bootstrap.json()) as {
-        barbers?: { _id: string }[];
-      };
-
-      const barbers = data.barbers ?? [];
-      const dates = Array.from({ length: WARM_DAYS }, (_, i) => localDate(i));
-
-      let calls = 0;
-      for (const date of dates) {
-        for (const barber of barbers) {
-          if (calls >= MAX_WARM_CALLS) return;
-          calls += 1;
-          await call(
-            `/api/public/availability?barberId=${barber._id}&date=${date}`
-          ).catch(() => undefined);
-        }
-      }
-    })();
-
-    ctx.waitUntil(warm.catch(() => undefined));
-  },
 };

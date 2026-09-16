@@ -10,9 +10,6 @@
   "placement": {
     "mode": "smart"
   },
-  "triggers": {
-    "crons": ["*/3 * * * *"]
-  },
   "assets": {
     "directory": ".open-next/assets",
     "binding": "ASSETS"

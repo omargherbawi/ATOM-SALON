@@ -1,8 +1,7 @@
 import NextAuth, { type NextAuthOptions } from 'next-auth';
 import CredentialsProvider from 'next-auth/providers/credentials';
 import bcrypt from 'bcryptjs';
-import dbConnect from '@/lib/mongodb';
-import User from '@/models/User';
+import { getMongoDb } from '@/lib/mongodb';
 
 export const runtime = 'nodejs';
 
@@ -19,12 +18,12 @@ export const authOptions: NextAuthOptions = {
           return null;
         }
 
-        await dbConnect();
+        const db = await getMongoDb();
 
-        const user = await User.findOne({
+        const user = await db.collection('users').findOne({
           email: credentials.email.toLowerCase(),
           active: true,
-        }).select('+password');
+        });
 
         if (!user?.password) {
           return null;
@@ -44,7 +43,7 @@ export const authOptions: NextAuthOptions = {
         }
 
         return {
-          id: user._id.toString(),
+          id: String(user._id),
           email: user.email,
           name: user.name,
           role: user.role,
