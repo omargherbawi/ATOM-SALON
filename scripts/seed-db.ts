@@ -3,6 +3,7 @@ import bcrypt from 'bcryptjs';
 import dbConnect from '../lib/mongodb';
 import User from '../models/User';
 import Settings from '../models/Settings';
+import PushSubscription from '../models/PushSubscription';
 
 async function seed() {
   const uri = process.env.MONGODB_URI;
@@ -36,6 +37,9 @@ async function seed() {
     });
     console.log('Created default settings');
   }
+
+  await PushSubscription.createIndexes();
+  console.log('Ensured push subscription indexes');
 
   console.log('Seed complete');
   process.exit(0);

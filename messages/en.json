@@ -213,5 +213,22 @@
     "saving": "Saving...",
     "saved": "Breaks saved",
     "saveError": "Failed to save breaks"
+  },
+  "push": {
+    "newBookingTitle": "New booking",
+    "newBookingBody": "{customer} booked {day} {date}, {time}",
+    "confirmedTitle": "Booking confirmed",
+    "confirmedBody": "Barber {barber} confirmed your booking on {day} {date}, {time}",
+    "enable": "Turn on notifications",
+    "disable": "Turn off notifications",
+    "on": "Notifications are on for this device",
+    "barberHint": "Get a notification on this device when a customer books with you.",
+    "customerHint": "Get a notification when the barber confirms your booking.",
+    "turnedOn": "Notifications turned on",
+    "turnedOff": "Notifications turned off",
+    "denied": "Notifications are blocked. Allow them for this site in your browser settings.",
+    "unsupported": "This browser does not support notifications.",
+    "iosHint": "On iPhone: tap Share, then \"Add to Home Screen\", and open the salon from your Home Screen to turn on notifications.",
+    "failed": "Could not turn on notifications"
   }
 }

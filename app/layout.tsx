@@ -16,6 +16,11 @@ const geistMono = Geist_Mono({
 export const metadata: Metadata = {
   title: 'Atom Salon — Barbershop Appointments',
   description: 'Premium barbershop appointment booking for men',
+  appleWebApp: {
+    capable: true,
+    title: 'Atom Salon',
+    statusBarStyle: 'black',
+  },
 };
 
 export default function RootLayout({

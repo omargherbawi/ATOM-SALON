@@ -19,6 +19,10 @@ import {
   withGuestCookie,
 } from '@/lib/guest';
 import { invalidateAvailabilityCache } from '@/lib/public-cache';
+import {
+  notifyBarberNewBooking,
+  sendInBackground,
+} from '@/lib/push-notifications';
 
 export const runtime = 'nodejs';
 
@@ -149,6 +153,8 @@ export async function POST(request: NextRequest) {
     if (holdsSlot(appointmentStatus)) {
       await invalidateAvailabilityCache(barberId, date);
     }
+
+    sendInBackground(notifyBarberNewBooking(appointment));
 
     const response = NextResponse.json({
       message: settings.payToConfirm

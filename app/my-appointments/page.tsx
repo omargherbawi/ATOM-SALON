@@ -4,6 +4,7 @@ import { useEffect, useMemo, useState } from 'react';
 import toast from 'react-hot-toast';
 import ProtectedRoute from '../protected-route';
 import SidebarLayout from '../components/sidebar-layout';
+import PushNotificationToggle from '../components/PushNotificationToggle';
 import { useTranslations } from '../hooks/useTranslations';
 import { useSettings } from '../contexts/SettingsContext';
 import { formatSlotLabel, localDateString } from '@/lib/working-hours';
@@ -133,6 +134,10 @@ export default function MyAppointmentsPage() {
         title={t('myAppointments.title')}
         description={t('myAppointments.description')}
       >
+        <div className="mb-4">
+          <PushNotificationToggle audience="barber" />
+        </div>
+
         <div className="flex flex-wrap gap-2 mb-4">
           {filterButton('today', t('appointments.today'))}
           {filterButton('pending', t('appointments.pendingTab'), pendingCount)}

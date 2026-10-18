@@ -17,6 +17,7 @@ import toast from 'react-hot-toast';
 import { useTranslations } from './hooks/useTranslations';
 import { useSettings } from './contexts/SettingsContext';
 import LanguageSwitcher from './components/LanguageSwitcher';
+import PushNotificationToggle from './components/PushNotificationToggle';
 import {
   localDateString,
   isActiveBooking,
@@ -71,6 +72,12 @@ export default function BookingPage() {
 
   const scheduledAppointments = appointments.filter((item) =>
     isActiveBooking(item.status)
+  );
+  // Pay-to-confirm bookings wait for the barber; offer a ping when that happens.
+  const awaitingConfirmation = scheduledAppointments.some(
+    (item) =>
+      (item.status === 'unconfirmed' && !item.slotTaken) ||
+      item.status === 'pending'
   );
   const barbersRequestId = useRef(0);
 
@@ -442,6 +449,9 @@ export default function BookingPage() {
           </div>
         ) : !showForm && scheduledAppointments.length > 0 ? (
           <div className="space-y-4">
+            {awaitingConfirmation && (
+              <PushNotificationToggle audience="customer" />
+            )}
             {scheduledAppointments.map((appt) => {
               const unconfirmed = appt.status === 'unconfirmed';
               const slotTaken = Boolean(unconfirmed && appt.slotTaken);

@@ -6,6 +6,10 @@ import Appointment from '@/models/Appointment';
 import { ACTIVE_BOOKING_STATUSES, holdsSlot } from '@/lib/working-hours';
 import { isDuplicateSlotError } from '@/lib/appointment-errors';
 import { invalidateAvailabilityCache } from '@/lib/public-cache';
+import {
+  notifyCustomerBookingConfirmed,
+  sendInBackground,
+} from '@/lib/push-notifications';
 
 export const runtime = 'nodejs';
 
@@ -93,6 +97,13 @@ export async function PUT(
       }
     }
 
+    // Only pay-to-confirm bookings pass through `unconfirmed`/`pending`, so
+    // moving one of those onto the schedule is the barber confirming it.
+    const confirmsPaidBooking =
+      body.status === 'scheduled' &&
+      (appointment.status === 'unconfirmed' ||
+        appointment.status === 'pending');
+
     if (body.status) appointment.status = body.status;
     if (body.notes !== undefined) appointment.notes = body.notes;
 
@@ -109,6 +120,10 @@ export async function PUT(
     }
 
     await invalidateAvailabilityCache(appointment.barberId, appointment.date);
+
+    if (confirmsPaidBooking) {
+      sendInBackground(notifyCustomerBookingConfirmed(appointment));
+    }
 
     return NextResponse.json({
       message: 'Appointment updated',
