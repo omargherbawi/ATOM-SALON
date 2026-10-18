@@ -20,8 +20,8 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     self.registration.showNotification(data.title || 'Atom Salon', {
       body: data.body || '',
-      icon: '/icon-192.png',
-      badge: '/badge-96.png',
+      icon: '/icon-192.png?v=2',
+      badge: '/badge-96.png?v=2',
       lang: data.lang,
       dir: data.dir || 'auto',
       tag: data.tag,

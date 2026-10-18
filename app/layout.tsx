@@ -13,26 +13,37 @@ const geistMono = Geist_Mono({
   subsets: ['latin'],
 });
 
+// Browsers cache icons by URL for a long time (Chrome's favicon store, the iOS
+// Home Screen icon). Bump this whenever the icon files change so every device
+// fetches the new ones.
+const ICON_VERSION = '2';
+
 export const metadata: Metadata = {
   title: 'Atom Salon — Barbershop Appointments',
   description: 'Premium barbershop appointment booking for men',
   applicationName: 'Atom Salon',
-  manifest: '/site.webmanifest',
+  manifest: `/site.webmanifest?v=${ICON_VERSION}`,
   // Safari on iOS asks for /apple-touch-icon.png and
   // /apple-touch-icon-precomposed.png on every visit unless the page names the
   // icons itself. Those guesses used to reach the Worker and cost a full 404
   // render; the files below are static assets, so they never wake it.
   icons: {
     icon: [
-      { url: '/favicon.ico', sizes: '256x256' },
-      { url: '/icon-192.png', sizes: '192x192', type: 'image/png' },
-      { url: '/icon-512.png', sizes: '512x512', type: 'image/png' },
+      { url: `/favicon.ico?v=${ICON_VERSION}`, sizes: '256x256' },
+      { url: `/icon-192.png?v=${ICON_VERSION}`, sizes: '192x192', type: 'image/png' },
+      { url: `/icon-512.png?v=${ICON_VERSION}`, sizes: '512x512', type: 'image/png' },
     ],
-    apple: [{ url: '/apple-touch-icon.png', sizes: '180x180', type: 'image/png' }],
+    apple: [
+      {
+        url: `/apple-touch-icon.png?v=${ICON_VERSION}`,
+        sizes: '180x180',
+        type: 'image/png',
+      },
+    ],
     other: [
       {
         rel: 'apple-touch-icon-precomposed',
-        url: '/apple-touch-icon-precomposed.png',
+        url: `/apple-touch-icon-precomposed.png?v=${ICON_VERSION}`,
       },
     ],
   },
