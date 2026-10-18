@@ -21,6 +21,12 @@
 /site.webmanifest
   Cache-Control: public,max-age=604800
 
+/logo.png
+  Cache-Control: public,max-age=604800
+
+/badge-96.png
+  Cache-Control: public,max-age=604800
+
 # Browsers must always fetch the latest service worker.
 /sw.js
   Cache-Control: no-cache

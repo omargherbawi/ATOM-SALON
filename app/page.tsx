@@ -1,6 +1,7 @@
 'use client';
 
 import { useCallback, useEffect, useRef, useState } from 'react';
+import Image from 'next/image';
 import Link from 'next/link';
 import {
   AlertCircle,
@@ -455,9 +456,15 @@ export default function BookingPage() {
       <header className="border-b border-amber-500/20 bg-black/80 backdrop-blur-sm sticky top-0 z-10">
         <div className="max-w-2xl mx-auto px-4 py-4 flex items-center justify-between">
           <div className="flex items-center gap-3">
-            <div className="rounded-full bg-amber-500/10 p-2 border border-amber-500/30">
-              <Scissors className="h-6 w-6 text-amber-400" />
-            </div>
+            <Image
+              src="/logo.png"
+              alt=""
+              width={48}
+              height={48}
+              priority
+              unoptimized
+              className="h-12 w-12 shrink-0"
+            />
             <div>
               <h1 className="text-lg font-bold text-amber-400">
                 {settings.systemTitle}

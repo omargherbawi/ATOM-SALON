@@ -4,7 +4,8 @@ import { Suspense, useState } from 'react';
 import { SessionProvider, signIn } from 'next-auth/react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import Link from 'next/link';
-import { Loader2, Scissors } from 'lucide-react';
+import Image from 'next/image';
+import { Loader2 } from 'lucide-react';
 import toast from 'react-hot-toast';
 import { useTranslations } from '../hooks/useTranslations';
 import { useSettings } from '../contexts/SettingsContext';
@@ -51,9 +52,15 @@ function LoginForm() {
     <div className="min-h-screen flex items-center justify-center bg-gradient-to-b from-black via-zinc-950 to-black px-4">
       <div className="w-full max-w-md">
         <div className="text-center mb-8">
-          <div className="inline-flex rounded-full bg-amber-500/10 p-3 border border-amber-500/30 mb-4">
-            <Scissors className="h-8 w-8 text-amber-400" />
-          </div>
+          <Image
+            src="/logo.png"
+            alt=""
+            width={128}
+            height={128}
+            priority
+            unoptimized
+            className="mx-auto mb-4 h-32 w-32"
+          />
           <h1 className="text-2xl font-bold text-amber-400">
             {settings.systemTitle}
           </h1>

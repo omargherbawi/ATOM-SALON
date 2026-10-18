@@ -21,7 +21,7 @@ self.addEventListener('push', (event) => {
     self.registration.showNotification(data.title || 'Atom Salon', {
       body: data.body || '',
       icon: '/icon-192.png',
-      badge: '/icon-192.png',
+      badge: '/badge-96.png',
       lang: data.lang,
       dir: data.dir || 'auto',
       tag: data.tag,

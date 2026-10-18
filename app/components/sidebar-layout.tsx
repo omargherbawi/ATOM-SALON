@@ -1,5 +1,6 @@
 'use client';
 
+import Image from 'next/image';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { signOut, useSession } from 'next-auth/react';
@@ -143,7 +144,17 @@ export default function SidebarLayout({
         >
           <Menu className="h-6 w-6" />
         </button>
-        <span className="font-semibold text-amber-400">{settings.systemTitle}</span>
+        <span className="flex items-center gap-2 font-semibold text-amber-400">
+          <Image
+            src="/logo.png"
+            alt=""
+            width={28}
+            height={28}
+            unoptimized
+            className="h-7 w-7"
+          />
+          {settings.systemTitle}
+        </span>
         <LanguageSwitcher compact />
       </div>
 
@@ -156,9 +167,19 @@ export default function SidebarLayout({
           />
           <aside className="absolute start-0 top-0 h-full w-72 bg-zinc-900 border-e border-amber-500/20 p-4 flex flex-col">
             <div className="flex items-center justify-between mb-6">
-              <div>
-                <p className="font-bold text-amber-400">{settings.systemTitle}</p>
-                <p className="text-xs text-zinc-400">{session?.user?.name}</p>
+              <div className="flex items-center gap-3">
+                <Image
+                  src="/logo.png"
+                  alt=""
+                  width={40}
+                  height={40}
+                  unoptimized
+                  className="h-10 w-10 shrink-0"
+                />
+                <div>
+                  <p className="font-bold text-amber-400">{settings.systemTitle}</p>
+                  <p className="text-xs text-zinc-400">{session?.user?.name}</p>
+                </div>
               </div>
               <button
                 type="button"
@@ -189,6 +210,14 @@ export default function SidebarLayout({
         {/* Desktop sidebar */}
         <aside className="hidden lg:flex w-64 flex-col border-e border-amber-500/20 bg-zinc-900 p-4">
           <div className="mb-8">
+            <Image
+              src="/logo.png"
+              alt=""
+              width={80}
+              height={80}
+              unoptimized
+              className="mb-3 h-20 w-20"
+            />
             <h1 className="text-lg font-bold text-amber-400">{settings.systemTitle}</h1>
             <p className="text-xs text-zinc-400 mt-1">{session?.user?.name}</p>
             <p className="text-xs text-zinc-500 capitalize">{role}</p>
