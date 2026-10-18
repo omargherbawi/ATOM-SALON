@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import Customer from '@/models/Customer';
-import Appointment from '@/models/Appointment';
+import { getMongoDb, ObjectId } from '@/lib/mongodb';
 import { isActiveBooking } from '@/lib/working-hours';
 import { readGuestToken } from '@/lib/guest';
 import { invalidateAvailabilityCache } from '@/lib/public-cache';
@@ -27,19 +25,29 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await dbConnect();
+    let objectId: InstanceType<typeof ObjectId>;
+    try {
+      objectId = new ObjectId(id);
+    } catch {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
 
-    const customer = await Customer.findOne({ guestToken: token });
+    const db = await getMongoDb();
+
+    const customer = await db.collection('customers').findOne({
+      guestToken: token,
+    });
     if (!customer) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const appointment = await Appointment.findById(id);
+    const appointments = db.collection('appointments');
+    const appointment = await appointments.findOne({ _id: objectId });
     if (!appointment) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    if (appointment.customerId !== customer._id.toString()) {
+    if (appointment.customerId !== String(customer._id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -50,13 +58,17 @@ export async function POST(
       );
     }
 
-    appointment.status = 'cancelled';
-    await appointment.save();
+    const updated = await appointments.findOneAndUpdate(
+      { _id: objectId },
+      { $set: { status: 'cancelled', updatedAt: new Date() } },
+      { returnDocument: 'after' }
+    );
+
     await invalidateAvailabilityCache(appointment.barberId, appointment.date);
 
     return NextResponse.json({
       message: 'Appointment cancelled',
-      data: appointment,
+      data: updated ? { ...updated, _id: String(updated._id) } : null,
     });
   } catch (error) {
     console.error('POST /api/public/appointments/[id]/cancel error:', error);

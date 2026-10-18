@@ -1,24 +1,26 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../auth/[...nextauth]/route';
-import dbConnect from '@/lib/mongodb';
-import Customer from '@/models/Customer';
-import PushSubscription from '@/models/PushSubscription';
+import { getMongoDb } from '@/lib/mongodb';
 import { readGuestToken } from '@/lib/guest';
-import { getVapidKeys, isPushServiceEndpoint } from '@/lib/push-notifications';
+import {
+  PUSH_SUBSCRIPTIONS_COLLECTION,
+  getVapidKeys,
+  isPushServiceEndpoint,
+  type PushOwnerType,
+  type PushSubscriptionDoc,
+} from '@/lib/push-notifications';
 
 export const runtime = 'nodejs';
 
-type Audience = 'barber' | 'customer';
-
-function parseAudience(value: unknown): Audience | null {
+function parseAudience(value: unknown): PushOwnerType | null {
   return value === 'barber' || value === 'customer' ? value : null;
 }
 
 /** Resolves who is subscribing: the signed-in barber, or the guest customer. */
 async function resolveOwner(
   request: NextRequest,
-  audience: Audience,
+  audience: PushOwnerType,
   guestToken?: string
 ): Promise<string | null> {
   if (audience === 'barber') {
@@ -29,9 +31,11 @@ async function resolveOwner(
 
   const token = readGuestToken(request, guestToken || '');
   if (!token) return null;
-  await dbConnect();
-  const customer = await Customer.findOne({ guestToken: token }).select('_id');
-  return customer ? customer._id.toString() : null;
+  const db = await getMongoDb();
+  const customer = await db
+    .collection('customers')
+    .findOne({ guestToken: token }, { projection: { _id: 1 } });
+  return customer ? String(customer._id) : null;
 }
 
 /** The browser needs the VAPID public key before it can subscribe. */
@@ -63,18 +67,23 @@ export async function POST(request: NextRequest) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await dbConnect();
-    await PushSubscription.findOneAndUpdate(
-      { endpoint, ownerType: audience },
-      {
-        endpoint,
-        ownerType: audience,
-        ownerId,
-        keys: { p256dh, auth },
-        language: body.language === 'en' ? 'en' : 'ar',
-      },
-      { upsert: true, setDefaultsOnInsert: true }
-    );
+    const db = await getMongoDb();
+    const now = new Date();
+    await db
+      .collection<PushSubscriptionDoc>(PUSH_SUBSCRIPTIONS_COLLECTION)
+      .updateOne(
+        { endpoint, ownerType: audience },
+        {
+          $set: {
+            ownerId,
+            keys: { p256dh, auth },
+            language: body.language === 'en' ? 'en' : 'ar',
+            updatedAt: now,
+          },
+          $setOnInsert: { createdAt: now },
+        },
+        { upsert: true }
+      );
 
     return NextResponse.json({ message: 'Subscribed' });
   } catch (error) {
@@ -95,8 +104,10 @@ export async function DELETE(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid request' }, { status: 400 });
     }
 
-    await dbConnect();
-    await PushSubscription.deleteOne({ endpoint, ownerType: audience });
+    const db = await getMongoDb();
+    await db
+      .collection<PushSubscriptionDoc>(PUSH_SUBSCRIPTIONS_COLLECTION)
+      .deleteOne({ endpoint, ownerType: audience });
 
     return NextResponse.json({ message: 'Unsubscribed' });
   } catch (error) {

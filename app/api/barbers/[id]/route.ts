@@ -2,16 +2,27 @@ import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import bcrypt from 'bcryptjs';
 import { authOptions } from '../../auth/[...nextauth]/route';
-import dbConnect from '@/lib/mongodb';
-import User from '@/models/User';
-import Appointment from '@/models/Appointment';
-import { normalizeBreaks, normalizeWorkingHours } from '@/lib/working-hours';
+import { getMongoDb, ObjectId } from '@/lib/mongodb';
+import {
+  normalizeBreaks,
+  normalizeWorkingHours,
+  type BarberBreak,
+} from '@/lib/working-hours';
 import {
   invalidateAvailabilityCache,
   invalidateBarberCaches,
 } from '@/lib/public-cache';
 
 export const runtime = 'nodejs';
+
+/** Null when the route param is not a valid ObjectId. */
+function toObjectId(id: string) {
+  try {
+    return new ObjectId(id);
+  } catch {
+    return null;
+  }
+}
 
 export async function GET(
   request: NextRequest,
@@ -28,11 +39,15 @@ export async function GET(
     }
 
     const { id } = await params;
-    await dbConnect();
+    const objectId = toObjectId(id);
+    if (!objectId) {
+      return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
+    }
 
-    const barber = await User.findOne({ _id: id, role: 'barber' }).select(
-      '-password'
-    );
+    const db = await getMongoDb();
+    const barber = await db
+      .collection('users')
+      .findOne({ _id: objectId, role: 'barber' }, { projection: { password: 0 } });
 
     if (!barber) {
       return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
@@ -60,20 +75,28 @@ export async function PUT(
     }
 
     const { id } = await params;
-    const body = await request.json();
-    await dbConnect();
+    const objectId = toObjectId(id);
+    if (!objectId) {
+      return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
+    }
 
-    const barber = await User.findOne({ _id: id, role: 'barber' });
+    const body = await request.json();
+    const db = await getMongoDb();
+    const users = db.collection('users');
+
+    const barber = await users.findOne({ _id: objectId, role: 'barber' });
     if (!barber) {
       return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
     }
 
-    if (body.name) barber.name = body.name.trim();
+    const updates: Record<string, unknown> = {};
+
+    if (body.name) updates.name = String(body.name).trim();
     if (body.email) {
-      const email = body.email.toLowerCase().trim();
-      const taken = await User.findOne({
+      const email = String(body.email).toLowerCase().trim();
+      const taken = await users.findOne({
         email,
-        _id: { $ne: id },
+        _id: { $ne: objectId },
       });
       if (taken) {
         return NextResponse.json(
@@ -81,17 +104,17 @@ export async function PUT(
           { status: 400 }
         );
       }
-      barber.email = email;
+      updates.email = email;
     }
-    if (typeof body.active === 'boolean') barber.active = body.active;
+    if (typeof body.active === 'boolean') updates.active = body.active;
     if (typeof body.cliqNumber === 'string') {
-      barber.cliqNumber = body.cliqNumber.trim();
+      updates.cliqNumber = body.cliqNumber.trim();
     }
     if (typeof body.cliqBank === 'string') {
-      barber.cliqBank = body.cliqBank.trim();
+      updates.cliqBank = body.cliqBank.trim();
     }
     if (body.password && body.password.length >= 6) {
-      barber.password = await bcrypt.hash(body.password, 12);
+      updates.password = await bcrypt.hash(body.password, 12);
     }
     if (body.workingHours !== undefined) {
       const hours = normalizeWorkingHours(body.workingHours);
@@ -101,7 +124,7 @@ export async function PUT(
           { status: 400 }
         );
       }
-      barber.workingHours = hours;
+      updates.workingHours = hours;
     }
     // Working hours affect every date, breaks only the dates they touch.
     const staleDates = new Set<string>();
@@ -110,20 +133,27 @@ export async function PUT(
       if (!breaks) {
         return NextResponse.json({ error: 'Invalid breaks' }, { status: 400 });
       }
-      for (const item of [...(barber.breaks ?? []), ...breaks]) {
+      for (const item of [
+        ...((barber.breaks ?? []) as BarberBreak[]),
+        ...breaks,
+      ]) {
         staleDates.add(item.date);
       }
-      barber.breaks = breaks;
+      updates.breaks = breaks;
     }
 
-    await barber.save();
+    updates.updatedAt = new Date();
+
+    await users.updateOne({ _id: objectId }, { $set: updates });
     await invalidateBarberCaches();
     await Promise.all(
       [...staleDates].map((date) => invalidateAvailabilityCache(id, date))
     );
 
-    const result = barber.toObject();
-    delete result.password;
+    const result = await users.findOne(
+      { _id: objectId },
+      { projection: { password: 0 } }
+    );
 
     return NextResponse.json({
       message: 'Barber updated successfully',
@@ -150,19 +180,26 @@ export async function DELETE(
     }
 
     const { id } = await params;
-    await dbConnect();
+    const objectId = toObjectId(id);
+    if (!objectId) {
+      return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
+    }
 
-    const barber = await User.findOne({ _id: id, role: 'barber' });
+    const db = await getMongoDb();
+    const users = db.collection('users');
+
+    const barber = await users.findOne({ _id: objectId, role: 'barber' });
     if (!barber) {
       return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
     }
 
-    await Appointment.updateMany(
+    // `barberId` is stored as a string on appointments, not an ObjectId.
+    await db.collection('appointments').updateMany(
       { barberId: id, status: { $in: ['scheduled', 'scheduled'] } },
-      { status: 'cancelled' }
+      { $set: { status: 'cancelled', updatedAt: new Date() } }
     );
 
-    await User.deleteOne({ _id: id });
+    await users.deleteOne({ _id: objectId });
     await invalidateBarberCaches();
 
     return NextResponse.json({ message: 'Barber deleted successfully' });

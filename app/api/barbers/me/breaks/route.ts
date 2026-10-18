@@ -1,10 +1,9 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getServerSession } from 'next-auth/next';
 import { authOptions } from '../../../auth/[...nextauth]/route';
-import dbConnect from '@/lib/mongodb';
-import User from '@/models/User';
+import { getMongoDb, ObjectId } from '@/lib/mongodb';
 import { getPublicSettings } from '@/lib/public-data';
-import { normalizeBreaks } from '@/lib/working-hours';
+import { normalizeBreaks, type BarberBreak } from '@/lib/working-hours';
 import {
   invalidateAvailabilityCache,
   invalidateBarberCaches,
@@ -24,15 +23,30 @@ async function getBarberId() {
   return { id: session.user.id };
 }
 
+/** Null when the session carries an id that is not a valid ObjectId. */
+function barberFilter(id: string) {
+  try {
+    return { _id: new ObjectId(id), role: 'barber' };
+  } catch {
+    return null;
+  }
+}
+
 export async function GET() {
   try {
     const auth = await getBarberId();
     if (auth.error) return auth.error;
 
-    const [settings] = await Promise.all([getPublicSettings(), dbConnect()]);
-    const barber = await User.findOne({ _id: auth.id, role: 'barber' }).select(
-      'breaks'
-    );
+    const filter = barberFilter(auth.id);
+    if (!filter) {
+      return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
+    }
+
+    const [settings, db] = await Promise.all([getPublicSettings(), getMongoDb()]);
+    const barber = await db
+      .collection('users')
+      .findOne(filter, { projection: { breaks: 1 } });
+
     if (!barber) {
       return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
     }
@@ -69,20 +83,31 @@ export async function PUT(request: NextRequest) {
       return NextResponse.json({ error: 'Invalid breaks' }, { status: 400 });
     }
 
-    await dbConnect();
-    const barber = await User.findOne({ _id: auth.id, role: 'barber' });
+    const filter = barberFilter(auth.id);
+    if (!filter) {
+      return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
+    }
+
+    const db = await getMongoDb();
+    const users = db.collection('users');
+    const barber = await users.findOne(filter, { projection: { breaks: 1 } });
     if (!barber) {
       return NextResponse.json({ error: 'Barber not found' }, { status: 404 });
     }
 
     // Breaks only affect availability on the dates they touch.
     const staleDates = new Set<string>();
-    for (const item of [...(barber.breaks ?? []), ...breaks]) {
+    for (const item of [
+      ...((barber.breaks ?? []) as BarberBreak[]),
+      ...breaks,
+    ]) {
       staleDates.add(item.date);
     }
-    barber.breaks = breaks;
 
-    await barber.save();
+    await users.updateOne(filter, {
+      $set: { breaks, updatedAt: new Date() },
+    });
+
     await invalidateBarberCaches();
     await Promise.all(
       [...staleDates].map((date) => invalidateAvailabilityCache(auth.id, date))
@@ -90,7 +115,7 @@ export async function PUT(request: NextRequest) {
 
     return NextResponse.json({
       message: 'Breaks updated successfully',
-      breaks: barber.breaks,
+      breaks,
     });
   } catch (error) {
     console.error('PUT /api/barbers/me/breaks error:', error);

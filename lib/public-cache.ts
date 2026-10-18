@@ -11,7 +11,10 @@ import { getCloudflareContext } from '@opennextjs/cloudflare';
 //   3. Workers KV     - global, so a cold city never waits on Atlas
 const CACHE_NAME = 'atom-salon-public';
 const KV_MIN_TTL_SECONDS = 60;
-const LOAD_TIMEOUT_MS = 20_000;
+// Below the booking page's own 12s deadline on purpose: a stalled Atlas call
+// should surface as a fast 503 the client can retry against a warm isolate,
+// rather than have the browser give up first and leave the request hanging.
+const LOAD_TIMEOUT_MS = 10_000;
 
 type Envelope<T> = {
   v: T;
@@ -30,8 +33,19 @@ type PublicCacheKv = {
   delete(key: string): Promise<void>;
 };
 
+// Values only, no promises: plain JSON is safe to share between requests.
 const memoryCache = new Map<string, Envelope<unknown>>();
-const inFlight = new Map<string, Promise<unknown>>();
+
+// Collapsing duplicate loads is only safe *within* one request. Handing a
+// promise created by another request to this one is the cross-request I/O that
+// Workers refuses: it either throws "Cannot perform I/O on behalf of a
+// different request" or cancels the continuation, leaving this request awaiting
+// a promise that can never settle. Keyed per request, so entries die with it.
+const inFlightByRequest = new WeakMap<object, Map<string, Promise<unknown>>>();
+
+// Outside a request (scripts, build) there is no per-request identity and no
+// cross-request hazard, so a plain map is fine.
+const inFlightFallback = new Map<string, Promise<unknown>>();
 
 export const PUBLIC_CACHE_KEYS = {
   barbers: 'public:barbers',
@@ -64,6 +78,19 @@ async function getContext() {
   }
 }
 
+async function getInFlight(): Promise<Map<string, Promise<unknown>>> {
+  const context = await getContext();
+  if (!context) return inFlightFallback;
+
+  const key = context as unknown as object;
+  let map = inFlightByRequest.get(key);
+  if (!map) {
+    map = new Map();
+    inFlightByRequest.set(key, map);
+  }
+  return map;
+}
+
 async function getKv(): Promise<PublicCacheKv | null> {
   const context = await getContext();
   const kv = (context?.env as { PUBLIC_CACHE?: PublicCacheKv } | undefined)
@@ -71,12 +98,14 @@ async function getKv(): Promise<PublicCacheKv | null> {
   return kv ?? null;
 }
 
-function background(promise: Promise<unknown>) {
-  void promise.catch(() => {});
-  void (async () => {
-    const context = await getContext();
-    context?.ctx.waitUntil(promise.catch(() => {}));
-  })();
+/**
+ * Keeps the request alive while a background refresh finishes. The guarded
+ * promise is created immediately so a rejection can never go unhandled.
+ */
+async function background(promise: Promise<unknown>) {
+  const guarded = promise.catch(() => {});
+  const context = await getContext();
+  context?.ctx.waitUntil(guarded);
 }
 
 async function readEnvelope<T>(key: string): Promise<Envelope<T> | null> {
@@ -171,12 +200,14 @@ function withTimeout<T>(promise: Promise<T>, ms: number): Promise<T> {
   });
 }
 
-function refresh<T>(
+async function refresh<T>(
   key: string,
   load: () => Promise<T>,
   freshSeconds: number,
   keepSeconds: number
 ): Promise<T> {
+  const inFlight = await getInFlight();
+
   const existing = inFlight.get(key) as Promise<T> | undefined;
   if (existing) return existing;
 
@@ -214,7 +245,7 @@ export async function cachedRead<T>(options: {
 
   if (envelope) {
     if (envelope.f <= Date.now()) {
-      background(refresh(key, load, freshSeconds, keepSeconds));
+      void background(refresh(key, load, freshSeconds, keepSeconds));
     }
     return envelope.v;
   }

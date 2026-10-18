@@ -1,7 +1,5 @@
 import { NextRequest, NextResponse } from 'next/server';
-import dbConnect from '@/lib/mongodb';
-import Customer from '@/models/Customer';
-import Appointment from '@/models/Appointment';
+import { getMongoDb, ObjectId } from '@/lib/mongodb';
 import { ACTIVE_BOOKING_STATUSES } from '@/lib/working-hours';
 import { isDuplicateSlotError } from '@/lib/appointment-errors';
 import { readGuestToken } from '@/lib/guest';
@@ -34,7 +32,14 @@ export async function POST(
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    await dbConnect();
+    let objectId: InstanceType<typeof ObjectId>;
+    try {
+      objectId = new ObjectId(id);
+    } catch {
+      return NextResponse.json({ error: 'Not found' }, { status: 404 });
+    }
+
+    const db = await getMongoDb();
 
     const settings = await getPublicSettings();
     const transferNumber = String(body.transferNumber || '').trim();
@@ -46,17 +51,20 @@ export async function POST(
       );
     }
 
-    const customer = await Customer.findOne({ guestToken: token });
+    const customer = await db
+      .collection('customers')
+      .findOne({ guestToken: token });
     if (!customer) {
       return NextResponse.json({ error: 'Unauthorized' }, { status: 401 });
     }
 
-    const appointment = await Appointment.findById(id);
+    const appointments = db.collection('appointments');
+    const appointment = await appointments.findOne({ _id: objectId });
     if (!appointment) {
       return NextResponse.json({ error: 'Not found' }, { status: 404 });
     }
 
-    if (appointment.customerId !== customer._id.toString()) {
+    if (appointment.customerId !== String(customer._id)) {
       return NextResponse.json({ error: 'Forbidden' }, { status: 403 });
     }
 
@@ -67,7 +75,7 @@ export async function POST(
       );
     }
 
-    const holder = await Appointment.findOne({
+    const holder = await appointments.findOne({
       barberId: appointment.barberId,
       date: appointment.date,
       time: appointment.time,
@@ -85,11 +93,19 @@ export async function POST(
       );
     }
 
-    appointment.status = 'pending';
-    if (transferNumber) appointment.transferNumber = transferNumber;
+    const updates: Record<string, unknown> = {
+      status: 'pending',
+      updatedAt: new Date(),
+    };
+    if (transferNumber) updates.transferNumber = transferNumber;
 
+    let updated;
     try {
-      await appointment.save();
+      updated = await appointments.findOneAndUpdate(
+        { _id: objectId },
+        { $set: updates },
+        { returnDocument: 'after' }
+      );
     } catch (error) {
       if (isDuplicateSlotError(error)) {
         return NextResponse.json(
@@ -108,7 +124,7 @@ export async function POST(
 
     return NextResponse.json({
       message: 'Payment submitted',
-      data: appointment,
+      data: updated ? { ...updated, _id: String(updated._id) } : null,
     });
   } catch (error) {
     console.error('POST /api/public/appointments/[id]/pay error:', error);

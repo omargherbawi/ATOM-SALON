@@ -1,20 +1,34 @@
 import { getCloudflareContext } from '@opennextjs/cloudflare';
-import dbConnect from '@/lib/mongodb';
-import PushSubscription, {
-  type IPushSubscription,
-} from '@/models/PushSubscription';
+import { getMongoDb } from '@/lib/mongodb';
 import { getPublicSettings } from '@/lib/public-data';
 import {
   WEEKDAY_KEYS,
   formatSlotLabel,
   getDayOfWeek,
 } from '@/lib/working-hours';
-import { sendWebPush, type VapidKeys } from '@/lib/web-push';
+import {
+  sendWebPush,
+  type PushSubscriptionKeys,
+  type VapidKeys,
+} from '@/lib/web-push';
 import en from '@/messages/en.json';
 import ar from '@/messages/ar.json';
 
 type Language = 'en' | 'ar';
-type OwnerType = IPushSubscription['ownerType'];
+// Barbers subscribe as their user id, customers as their customer id.
+export type PushOwnerType = 'barber' | 'customer';
+
+export type PushSubscriptionDoc = {
+  endpoint: string;
+  keys: PushSubscriptionKeys;
+  ownerType: PushOwnerType;
+  ownerId: string;
+  language: Language;
+  createdAt: Date;
+  updatedAt: Date;
+};
+
+export const PUSH_SUBSCRIPTIONS_COLLECTION = 'pushsubscriptions';
 
 type NotificationContent = {
   title: string;
@@ -94,7 +108,7 @@ async function describeSlot(
 }
 
 async function sendToOwner(
-  ownerType: OwnerType,
+  ownerType: PushOwnerType,
   ownerId: string,
   build: (language: Language) => Promise<NotificationContent>
 ) {
@@ -104,10 +118,16 @@ async function sendToOwner(
     return;
   }
 
-  await dbConnect();
-  const subscriptions = await PushSubscription.find({ ownerType, ownerId })
-    .select('endpoint keys language')
-    .lean<Pick<IPushSubscription, '_id' | 'endpoint' | 'keys' | 'language'>[]>();
+  const db = await getMongoDb();
+  const collection = db.collection<PushSubscriptionDoc>(
+    PUSH_SUBSCRIPTIONS_COLLECTION
+  );
+  const subscriptions = await collection
+    .find(
+      { ownerType, ownerId },
+      { projection: { endpoint: 1, keys: 1, language: 1 } }
+    )
+    .toArray();
 
   await Promise.all(
     subscriptions.map(async (subscription) => {
@@ -122,7 +142,7 @@ async function sendToOwner(
       try {
         const result = await sendWebPush(subscription, payload, vapid);
         if (result.gone) {
-          await PushSubscription.deleteOne({ _id: subscription._id });
+          await collection.deleteOne({ _id: subscription._id });
         } else if (!result.ok) {
           console.error(
             `Push to ${new URL(subscription.endpoint).hostname} failed with ${result.status}`
